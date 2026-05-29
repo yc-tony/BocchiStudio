@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import { useCameraRecorder } from '../../hooks/useCameraRecorder'
 import TrackTimeline from '../TrackTimeline'
+import VideoFilmstrip from '../VideoFilmstrip'
 
 const CameraTrack = forwardRef(function CameraTrack(
-  { track, onUpdate, onRemove, onDurationChange, onSeek, position, tState },
+  { track, onUpdate, onRemove, onDurationChange, onSeek, position, projectDuration, tState },
   ref,
 ) {
   const [muted, setMuted]           = useState(false)
   const [previewOpen, setPreviewOpen] = useState(true)
+  const [recordedUrl, setRecordedUrl] = useState(null)
   const mutedRef = useRef(false)
 
   const {
@@ -19,6 +21,14 @@ const CameraTrack = forwardRef(function CameraTrack(
 
   const isRecording = state === 'recording'
   const isBusy      = isRecording || state === 'requesting'
+
+  // Create/revoke blob URL for filmstrip once recording is done
+  useEffect(() => {
+    if (!blob) { if (recordedUrl) URL.revokeObjectURL(recordedUrl); setRecordedUrl(null); return }
+    const url = URL.createObjectURL(blob)
+    setRecordedUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [blob]) // eslint-disable-line
 
   useImperativeHandle(ref, () => ({
     getType:     () => 'camera',
@@ -104,11 +114,17 @@ const CameraTrack = forwardRef(function CameraTrack(
         <TrackTimeline
           position={position}
           duration={state === 'done' ? elapsed : 0}
+          projectDuration={projectDuration}
           isRecording={isRecording}
           recElapsed={elapsed}
           fillClass="tl-fill--rec"
           label={isRecording ? `● REC ${formattedTime}` : state === 'done' ? `✓ ${track.name}` : null}
           onSeek={onSeek}
+          backdrop={
+            recordedUrl && state === 'done'
+              ? <VideoFilmstrip objectUrl={recordedUrl} duration={elapsed} />
+              : null
+          }
         />
       </div>
 

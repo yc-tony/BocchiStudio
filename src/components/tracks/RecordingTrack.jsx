@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import { useMicRecorder } from '../../hooks/useMicRecorder'
 import { usePluginChain } from '../../hooks/usePluginChain'
+import { useAudioWaveform } from '../../hooks/useAudioWaveform'
 import VUMeter from '../VUMeter'
 import FxChain from '../FxChain'
+import WaveformBars from '../WaveformBars'
 import TrackTimeline from '../TrackTimeline'
 
 const RecordingTrack = forwardRef(function RecordingTrack(
-  { track, onUpdate, onRemove, onDurationChange, onSeek, position, tState },
+  { track, onUpdate, onRemove, onDurationChange, onSeek, position, projectDuration, tState },
   ref,
 ) {
   const [fxOpen, setFxOpen] = useState(false)
@@ -23,6 +25,8 @@ const RecordingTrack = forwardRef(function RecordingTrack(
   const micFx = usePluginChain()
   const isRecording = state === 'recording'
   const isBusy      = isRecording || state === 'requesting'
+
+  const waveformPeaks = useAudioWaveform(track.recordedBlob)
 
   useImperativeHandle(ref, () => ({
     getType:     () => 'recording',
@@ -102,11 +106,15 @@ const RecordingTrack = forwardRef(function RecordingTrack(
         <TrackTimeline
           position={position}
           duration={state === 'done' ? elapsed : 0}
+          projectDuration={projectDuration}
           isRecording={isRecording}
           recElapsed={elapsed}
           fillClass="tl-fill--rec"
           label={isRecording ? `● REC ${formattedTime}` : state === 'done' ? `✓ ${track.name}` : null}
           onSeek={onSeek}
+          backdrop={waveformPeaks
+            ? <WaveformBars peaks={waveformPeaks} color="rgba(176,64,64,0.28)" />
+            : null}
         />
       </div>
 

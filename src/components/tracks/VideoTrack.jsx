@@ -1,14 +1,16 @@
 import { useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
 import TrackTimeline from '../TrackTimeline'
+import VideoFilmstrip from '../VideoFilmstrip'
 
 const VideoTrack = forwardRef(function VideoTrack(
-  { track, onUpdate, onRemove, onDurationChange, onSeek, position, tState },
+  { track, onUpdate, onRemove, onDurationChange, onSeek, position, projectDuration, tState },
   ref,
 ) {
   const videoRef              = useRef(null)
   const [dragOver, setDragOver] = useState(false)
   const [expanded, setExpanded] = useState(true)
   const [muted, setMuted]       = useState(false)
+  const [videoDuration, setVideoDuration] = useState(0)
   const mutedRef = useRef(false)
 
   useImperativeHandle(ref, () => ({
@@ -39,7 +41,10 @@ const VideoTrack = forwardRef(function VideoTrack(
 
   const handleVideoLoad = useCallback(() => {
     const dur = videoRef.current?.duration
-    if (dur && isFinite(dur)) onDurationChange(track.id, dur)
+    if (dur && isFinite(dur)) {
+      setVideoDuration(dur)
+      onDurationChange(track.id, dur)
+    }
   }, [track.id, onDurationChange])
 
   const toggleMute = () => {
@@ -47,8 +52,6 @@ const VideoTrack = forwardRef(function VideoTrack(
     mutedRef.current = next; setMuted(next)
     if (videoRef.current) videoRef.current.muted = next
   }
-
-  const duration = videoRef.current?.duration || 0
 
   return (
     <div className={`track-wrapper ${muted ? 'track-wrapper--muted' : ''}`}>
@@ -95,11 +98,17 @@ const VideoTrack = forwardRef(function VideoTrack(
         {/* Right: timeline cell */}
         <TrackTimeline
           position={position}
-          duration={duration}
+          duration={videoDuration}
+          projectDuration={projectDuration}
           isRecording={false}
           fillClass="tl-fill--video"
           label={track.objectUrl ? track.name : null}
           onSeek={onSeek}
+          backdrop={
+            track.objectUrl && videoDuration > 0
+              ? <VideoFilmstrip objectUrl={track.objectUrl} duration={videoDuration} />
+              : null
+          }
         >
           {!track.objectUrl && (
             <div

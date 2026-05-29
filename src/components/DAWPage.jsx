@@ -143,8 +143,9 @@ export default function DAWPage() {
     onUpdate: updateTrack,
     onRemove: removeTrack,
     onDurationChange: handleDurationChange,
-    onSeek: handleSeek,   // global seek — fixes the seek-when-idle bug
+    onSeek: handleSeek,
     position,
+    projectDuration,   // all tracks normalize to the same scale
     tState,
   })
 

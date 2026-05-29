@@ -2,12 +2,14 @@ import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHand
 import {
   usePluginChain, buildAndConnectChain, teardownChain, updateLiveParam,
 } from '../../hooks/usePluginChain'
+import { useAudioWaveform } from '../../hooks/useAudioWaveform'
 import VUMeter from '../VUMeter'
 import FxChain from '../FxChain'
+import WaveformBars from '../WaveformBars'
 import TrackTimeline from '../TrackTimeline'
 
 const AudioTrack = forwardRef(function AudioTrack(
-  { track, onUpdate, onRemove, onDurationChange, onSeek, position, tState },
+  { track, onUpdate, onRemove, onDurationChange, onSeek, position, projectDuration, tState },
   ref,
 ) {
   const [level, setLevel]       = useState(0)
@@ -26,6 +28,8 @@ const AudioTrack = forwardRef(function AudioTrack(
   const fx    = usePluginChain()
   const fxRef = useRef([])
   fxRef.current = fx.plugins
+
+  const waveformPeaks = useAudioWaveform(track.blob)
 
   // ── Transport interface ───────────────────────────────────────
   useImperativeHandle(ref, () => ({
@@ -167,10 +171,14 @@ const AudioTrack = forwardRef(function AudioTrack(
         <TrackTimeline
           position={position}
           duration={duration}
+          projectDuration={projectDuration}
           isRecording={false}
           fillClass="tl-fill--audio"
           label={track.objectUrl ? track.name : null}
           onSeek={onSeek}
+          backdrop={waveformPeaks
+            ? <WaveformBars peaks={waveformPeaks} color="rgba(176,96,64,0.28)" />
+            : null}
         >
           {!track.objectUrl && (
             <div
