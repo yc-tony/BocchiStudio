@@ -18,7 +18,8 @@ const RecordingTrack = forwardRef(function RecordingTrack(
   const {
     state, elapsed, formattedTime, blob, micLevel, permError,
     audioDevices, selectedAudioId,
-    requestMic, switchAudio, refreshDevices,
+    detectedChannels, selectedChannel,
+    requestMic, switchAudio, switchChannel, refreshDevices,
     startImmediate, stopImmediate,
   } = useMicRecorder()
 
@@ -67,16 +68,21 @@ const RecordingTrack = forwardRef(function RecordingTrack(
             </div>
           </div>
 
-          {/* VU + status */}
+          {/* VU + status + active channel badge */}
           <div className="hd-vu">
             <VUMeter level={muted ? 0 : micLevel} bars={14} />
+            {detectedChannels > 1 && !isRecording && (
+              <span className="ch-badge">
+                {selectedChannel >= 0 ? `CH${selectedChannel + 1}` : 'ST'}
+              </span>
+            )}
             {state === 'idle'       && <span className="status-chip status-idle">Ready</span>}
             {state === 'requesting' && <span className="status-chip status-loading">Init…</span>}
             {isRecording            && <span className="status-chip status-rec">● {formattedTime}</span>}
             {state === 'done'       && <span className="status-chip status-done">✓</span>}
           </div>
 
-          {/* Device selector */}
+          {/* Device + channel selectors */}
           <div className="hd-devices">
             <div className="device-picker">
               <span className="device-picker-label">MIC</span>
@@ -92,6 +98,30 @@ const RecordingTrack = forwardRef(function RecordingTrack(
               <button className="hd-btn" onClick={() => { refreshDevices(); requestMic().catch(() => {}) }}
                 disabled={isBusy} title="Refresh devices">↺</button>
             </div>
+
+            {/* Channel picker — only shown when multi-channel device detected */}
+            {detectedChannels > 1 && (
+              <div className="device-picker">
+                <span className="device-picker-label">CH</span>
+                <select
+                  className="device-select"
+                  value={selectedChannel}
+                  onChange={(e) => switchChannel(e.target.value)}
+                  disabled={isBusy}
+                >
+                  <option value={-1}>
+                    {detectedChannels === 2 ? 'Stereo (1+2)' : `All (${detectedChannels}ch)`}
+                  </option>
+                  {Array.from({ length: detectedChannels }, (_, i) => (
+                    <option key={i} value={i}>
+                      {detectedChannels === 2
+                        ? `Ch ${i + 1} ${i === 0 ? '(L)' : '(R)'}`
+                        : `Ch ${i + 1}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {permError && (
