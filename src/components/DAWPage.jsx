@@ -66,9 +66,7 @@ export default function DAWPage() {
     setPosition(clamped)
     Object.values(trackRefsMap.current).forEach((r) => r?.transportSeek(clamped))
     if (wasPlaying) {
-      Object.values(trackRefsMap.current).forEach((r) => {
-        if (r?.getType() !== 'recording') r?.transportPlay(clamped)
-      })
+      Object.values(trackRefsMap.current).forEach((r) => r?.transportPlay(clamped))
       startTicker()
     }
   }, [tState, stopTicker, startTicker])
@@ -89,9 +87,7 @@ export default function DAWPage() {
   const handlePlay = useCallback(() => {
     if (tState !== 'idle') return
     const pos = posRef.current
-    Object.values(trackRefsMap.current).forEach((r) => {
-      if (r?.getType() !== 'recording') r?.transportPlay(pos)
-    })
+    Object.values(trackRefsMap.current).forEach((r) => r?.transportPlay(pos))
     startTicker()
     setTState('playing')
   }, [tState, startTicker])

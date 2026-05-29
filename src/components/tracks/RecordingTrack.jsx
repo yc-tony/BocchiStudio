@@ -25,26 +25,60 @@ const RecordingTrack = forwardRef(function RecordingTrack(
   } = useMicRecorder()
 
   const micFx = usePluginChain()
-  const isRecording = state === 'recording'
-  const isBusy      = isRecording || state === 'requesting'
+  const isRecording   = state === 'recording'
+  const isPlayingBack = tState === 'playing'
+  const isBusy        = isRecording || state === 'requesting' || isPlayingBack
 
   const waveformPeaks = useAudioWaveform(track.recordedBlob)
 
+  const audioRef   = useRef(null)
+  const blobUrlRef = useRef(null)
+
+  // Build a playback Audio element whenever a new recording blob arrives
+  useEffect(() => {
+    if (!track.recordedBlob) return
+    if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current)
+    const url   = URL.createObjectURL(track.recordedBlob)
+    blobUrlRef.current = url
+    const audio = new Audio(url)
+    audioRef.current = audio
+    audio.addEventListener('loadedmetadata', () => onDurationChange(track.id, audio.duration))
+    return () => {
+      audio.pause()
+      audioRef.current = null
+      URL.revokeObjectURL(url)
+      blobUrlRef.current = null
+    }
+  }, [track.recordedBlob]) // eslint-disable-line
+
   useImperativeHandle(ref, () => ({
-    getType:     () => 'recording',
-    transportPlay()    {},
-    transportPause()   {},
-    transportStop()    { if (state === 'recording') stopImmediate() },
-    transportSeek()    {},
+    getType: () => 'recording',
+    transportPlay(fromTime) {
+      if (mutedRef.current || !audioRef.current) return
+      audioRef.current.currentTime = fromTime
+      audioRef.current.play().catch(() => {})
+    },
+    transportPause() { audioRef.current?.pause() },
+    transportStop() {
+      if (state === 'recording') stopImmediate()
+      audioRef.current?.pause()
+      if (audioRef.current) audioRef.current.currentTime = 0
+    },
+    transportSeek(time) {
+      if (audioRef.current) audioRef.current.currentTime = time
+    },
     transportStartRecord() { if (!mutedRef.current) startImmediate() },
     transportStopRecord()  { stopImmediate() },
-    getDuration()      { return state === 'done' ? elapsed : 0 },
-  }), [state, elapsed, startImmediate, stopImmediate])
+    getDuration()          { return audioRef.current?.duration || 0 },
+  }), [state, startImmediate, stopImmediate])
 
   useEffect(() => { requestMic().catch(() => {}) }, []) // eslint-disable-line
 
   useEffect(() => {
-    if (state === 'done' && blob) onUpdate(track.id, { recordedBlob: blob })
+    if (state === 'done' && blob) {
+      onUpdate(track.id, { recordedBlob: blob })
+      onDurationChange(track.id, elapsed) // register duration immediately so auto-stop works
+    }
   }, [state, blob]) // eslint-disable-line
 
   const toggleMute = () => {
@@ -79,10 +113,11 @@ const RecordingTrack = forwardRef(function RecordingTrack(
                 {selectedChannel >= 0 ? `CH${selectedChannel + 1}` : 'ST'}
               </span>
             )}
-            {state === 'idle'       && <span className="status-chip status-idle">Ready</span>}
-            {state === 'requesting' && <span className="status-chip status-loading">Init…</span>}
-            {isRecording            && <span className="status-chip status-rec">● {formattedTime}</span>}
-            {state === 'done'       && <span className="status-chip status-done">✓</span>}
+            {isPlayingBack                          && <span className="status-chip status-playing">▶ Playing</span>}
+            {!isPlayingBack && state === 'idle'       && <span className="status-chip status-idle">Ready</span>}
+            {!isPlayingBack && state === 'requesting' && <span className="status-chip status-loading">Init…</span>}
+            {!isPlayingBack && isRecording            && <span className="status-chip status-rec">● {formattedTime}</span>}
+            {!isPlayingBack && state === 'done'       && <span className="status-chip status-done">✓</span>}
           </div>
 
           {/* Device + channel selectors */}
