@@ -19,6 +19,7 @@ const RecordingTrack = forwardRef(function RecordingTrack(
     state, elapsed, formattedTime, blob, micLevel, permError,
     audioDevices, selectedAudioId,
     detectedChannels, selectedChannel,
+    monitoring, toggleMonitoring,
     requestMic, switchAudio, switchChannel, refreshDevices,
     startImmediate, stopImmediate,
   } = useMicRecorder()
@@ -63,6 +64,8 @@ const RecordingTrack = forwardRef(function RecordingTrack(
             <div className="track-hd-actions">
               <button className={`hd-btn ${muted ? 'hd-btn--muted' : ''}`} onClick={toggleMute}
                 title={muted ? 'Include in recording' : 'Skip (mute)'}>M</button>
+              <button className={`hd-btn ${monitoring ? 'hd-btn--monitor' : ''}`} onClick={toggleMonitoring}
+                title={monitoring ? '關閉輸入監聽' : '開啟輸入監聽（即時播放，建議戴耳機避免回授）'}>IN</button>
               <button className={`hd-btn ${fxOpen ? 'hd-btn--active' : ''}`} onClick={() => setFxOpen((o) => !o)}>FX</button>
               <button className="hd-btn hd-btn--remove" onClick={() => onRemove(track.id)}>✕</button>
             </div>
@@ -70,7 +73,7 @@ const RecordingTrack = forwardRef(function RecordingTrack(
 
           {/* VU + status + active channel badge */}
           <div className="hd-vu">
-            <VUMeter level={muted ? 0 : micLevel} bars={14} />
+            <VUMeter level={muted ? 0 : micLevel} bars={16} />
             {detectedChannels > 1 && !isRecording && (
               <span className="ch-badge">
                 {selectedChannel >= 0 ? `CH${selectedChannel + 1}` : 'ST'}

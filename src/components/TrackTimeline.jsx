@@ -20,8 +20,19 @@ export default function TrackTimeline({
   // Common scale: use project duration when available, fall back to own duration
   const scale = (projectDuration > 0 ? projectDuration : duration) || 0
 
-  // Where the playhead sits — synchronized across all tracks
-  const playheadPct = scale > 0 ? Math.min(100, (position / scale) * 100) : 0
+  // During recording with no loaded content (scale = 0), animate the fill and playhead
+  // using position (60fps) so movement is smooth.
+  // Uses an asymptotic formula: pos / (pos + LOOKAHEAD) so the fill grows rightward
+  // without reaching the end (we don't know when recording will stop).
+  const LOOKAHEAD = 8
+  const recSmoothPct = (isRecording && scale === 0 && position > 0)
+    ? Math.min(90, (position / (position + LOOKAHEAD)) * 90)
+    : 0
+
+  // Playhead: synced across all tracks using scale, or asymptotic during recording
+  const playheadPct = scale > 0
+    ? Math.min(100, (position / scale) * 100)
+    : recSmoothPct
 
   // Progress fill — advances with playback but stops at this track's own end
   const fillPct = (duration > 0 && scale > 0)
@@ -33,7 +44,8 @@ export default function TrackTimeline({
     ? Math.min(100, (duration / scale) * 100)
     : 100
 
-  const showPlayhead = scale > 0
+  // Show playhead whenever there's a valid scale OR when actively recording
+  const showPlayhead = scale > 0 || isRecording
 
   const handleMouseDown = (e) => {
     if (!scale) return
@@ -91,9 +103,12 @@ export default function TrackTimeline({
         <div className="tl-content-end" style={{ left: `${contentPct}%` }} />
       )}
 
-      {/* Recording grow fill — full width, indicates recording is active */}
+      {/* Recording fill — grows rightward using position (smooth, 60fps) */}
       {isRecording && (
-        <div className="tl-fill tl-fill--rec-grow" />
+        <div
+          className="tl-fill tl-fill--rec-grow"
+          style={scale === 0 ? { width: `${recSmoothPct}%` } : {}}
+        />
       )}
 
       {/* Playback progress fill — stops at this track's content end */}
@@ -114,7 +129,7 @@ export default function TrackTimeline({
         <span className="tl-dur tl-dur--rec">{fmtTime(recElapsed ?? 0)}</span>
       )}
 
-      {/* Playhead — same position % on every track */}
+      {/* Playhead — same position on every track, or growing during solo recording */}
       {showPlayhead && (
         <div className="tl-playhead" style={{ left: `${playheadPct}%` }} />
       )}

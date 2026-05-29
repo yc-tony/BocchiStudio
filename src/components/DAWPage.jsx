@@ -136,8 +136,9 @@ export default function DAWPage() {
     setTrackDurations((p) => ({ ...p, [id]: dur }))
   }, [])
 
+  // Note: `key` is passed directly on the JSX element, not via this object —
+  // spreading a `key` into JSX is a React anti-pattern and triggers a warning.
   const commonProps = (track) => ({
-    key: track.id,
     ref: (r) => { if (r) trackRefsMap.current[track.id] = r; else delete trackRefsMap.current[track.id] },
     track,
     onUpdate: updateTrack,
@@ -206,10 +207,10 @@ export default function DAWPage() {
           ) : (
             <>
               {tracks.map((track) => {
-                if (track.type === 'audio')     return <AudioTrack     {...commonProps(track)} />
-                if (track.type === 'recording') return <RecordingTrack {...commonProps(track)} />
-                if (track.type === 'camera')    return <CameraTrack    {...commonProps(track)} />
-                if (track.type === 'video')     return <VideoTrack     {...commonProps(track)} />
+                if (track.type === 'audio')     return <AudioTrack     key={track.id} {...commonProps(track)} />
+                if (track.type === 'recording') return <RecordingTrack key={track.id} {...commonProps(track)} />
+                if (track.type === 'camera')    return <CameraTrack    key={track.id} {...commonProps(track)} />
+                if (track.type === 'video')     return <VideoTrack     key={track.id} {...commonProps(track)} />
                 return null
               })}
             </>
