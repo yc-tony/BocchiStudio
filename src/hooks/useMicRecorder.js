@@ -60,20 +60,31 @@ export function useMicRecorder() {
   // ── VU meter — routes through ChannelSplitter when ch >= 0 ─────
   const startVU = useCallback((stream, ch = -1) => {
     if (audioCtxRef.current) audioCtxRef.current.close()
-    const ctx = new AudioContext()
+    // Match the AudioContext sample rate to the device's actual rate.
+    // Mismatched rates (e.g. context at 48000 vs Scarlett at 44100) cause
+    // createMediaStreamSource to return all-zero samples on some macOS configs.
+    const deviceRate = stream.getAudioTracks()[0]?.getSettings?.()?.sampleRate
+    const ctx = new AudioContext(deviceRate ? { sampleRate: deviceRate } : undefined)
     audioCtxRef.current = ctx
 
-    // Chrome starts AudioContext in "suspended" when created outside a direct
-    // user-gesture. Two defenses:
-    // 1. Try resume() immediately (works if a prior gesture exists in this tab).
-    // 2. Resume on the next DOM interaction as a fallback.
+    const track = stream.getAudioTracks()[0]
+    console.log('[VU] Starting — ctx.state:', ctx.state, '| ctx.sampleRate:', ctx.sampleRate,
+      '| stream.sampleRate:', track?.getSettings?.()?.sampleRate,
+      '| ch:', ch, '| track.label:', track?.label,
+      '| track.muted:', track?.muted, '| track.readyState:', track?.readyState)
+
     ctx.resume().catch(() => {})
     const resumeOnGesture = () => {
-      if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => console.log('[VU] AudioContext resumed via gesture')).catch(() => {})
+      }
     }
     document.addEventListener('click',      resumeOnGesture, { once: true })
     document.addEventListener('keydown',    resumeOnGesture, { once: true })
     document.addEventListener('touchstart', resumeOnGesture, { once: true, passive: true })
+
+    // Log state after a short delay so we can see if resume() worked
+    setTimeout(() => console.log('[VU] AudioContext state after 200ms:', ctx.state), 200)
 
     const src = ctx.createMediaStreamSource(stream)
 
@@ -93,30 +104,34 @@ export function useMicRecorder() {
     analyser.fftSize = 1024
     analyserIn.connect(analyser)
 
-    // Output gain → destination. Doubles as the live-monitoring volume:
-    // 0 = silent (meter still works), 1 = hear the input in real time.
-    // A path to destination also keeps the graph alive in some browsers.
     const monitorGain = ctx.createGain()
     monitorGain.gain.value = monitorRef.current ? 1 : 0
     monitorGainRef.current = monitorGain
     analyserIn.connect(monitorGain)
     monitorGain.connect(ctx.destination)
 
-    // Peak detection via time-domain waveform — correct and responsive for
-    // instrument signals (guitar, bass) where energy is frequency-specific.
-    // data[i] ∈ [0, 255], center = 128. |data[i] - 128| = amplitude sample.
-    const data = new Uint8Array(analyser.fftSize)
+    // Use Float32 — far more sensitive than Uint8 (detects signals as quiet as -80 dBFS)
+    const floatData = new Float32Array(analyser.fftSize)
+    let frameCount = 0
     const tick = () => {
-      if (audioCtxRef.current !== ctx) return  // context was replaced, stop loop
-      analyser.getByteTimeDomainData(data)
+      if (audioCtxRef.current !== ctx) return
+      analyser.getFloatTimeDomainData(floatData)
+
       let peak = 0
-      for (let i = 0; i < data.length; i++) {
-        const v = Math.abs(data[i] - 128)
+      for (let i = 0; i < floatData.length; i++) {
+        const v = Math.abs(floatData[i])
         if (v > peak) peak = v
       }
-      // peak ÷ 128 = normalised amplitude 0..1
-      // ×1.8 so a typical instrument at –14 dBFS shows ~50% on the meter
-      setMicLevel(Math.min(1, (peak / 128) * 1.8))
+
+      // Every ~1 sec: log peak + first 8 raw samples so we can see if data is moving
+      if (frameCount % 60 === 0) {
+        const dBFS = peak > 0 ? (20 * Math.log10(peak)).toFixed(1) : '-∞'
+        const samples = Array.from(floatData.slice(0, 8)).map(v => v.toFixed(4))
+        console.log(`[VU] ctx:${ctx.state} | peak:${peak.toFixed(5)} (${dBFS} dBFS) | ch:${ch} | samples:[${samples}]`)
+      }
+      frameCount++
+
+      setMicLevel(Math.min(1, peak * 1.8))
       rafRef.current = requestAnimationFrame(tick)
     }
     tick()
@@ -151,21 +166,32 @@ export function useMicRecorder() {
     try {
       if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop())
 
+      // Chrome + USB audio interfaces (e.g. Scarlett 2i2) return all-zero samples
+      // when echoCancellation/noiseSuppression/autoGainControl are all disabled —
+      // Chrome switches to a raw capture path that doesn't work with USB devices.
+      // Solution: let Chrome use its default pipeline (no explicit processing flags).
+      // We still disable AGC (gain control) because that's the most intrusive for instruments.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           ...(aId ? { deviceId: { exact: aId } } : {}),
-          channelCount: { ideal: 32, min: 1 }, // request as many channels as the device has
-          echoCancellation: false,
-          noiseSuppression: false,
+          channelCount: { ideal: 2 },
           autoGainControl: false,
         },
       })
       streamRef.current = stream
 
-      // Detect max available channels
+      // ── Debug: print everything about the acquired stream ──────────
       const audioTrack = stream.getAudioTracks()[0]
       const caps     = audioTrack.getCapabilities?.()
       const settings = audioTrack.getSettings?.()
+      console.group('[MIC] Stream acquired')
+      console.log('Track label  :', audioTrack.label)
+      console.log('Track state  :', audioTrack.readyState, '| muted:', audioTrack.muted, '| enabled:', audioTrack.enabled)
+      console.log('Settings     :', JSON.stringify(settings, null, 2))
+      console.log('Capabilities :', JSON.stringify(caps,     null, 2))
+      console.groupEnd()
+      // ──────────────────────────────────────────────────────────────
+
       // Prefer capabilities max (device capability) over settings (current stream)
       const maxCh = Math.max(
         caps?.channelCount?.max ?? 1,
