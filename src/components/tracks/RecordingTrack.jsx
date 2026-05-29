@@ -9,14 +9,13 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
   const [camExpanded, setCamExpanded] = useState(true)
 
   const {
-    state, countdown, formattedTime, blob, micLevel, permError,
+    state, countdown, formattedTime, blob, micLevel, permError, hasVideo,
     audioDevices, videoDevices, selectedAudioId, selectedVideoId,
     videoRef, requestCamera, switchDevice, refreshDevices,
     startRecording, stopRecording,
   } = useRecorder()
 
   const micFx = usePluginChain()
-
   const isRecording = state === 'recording'
   const isCountdown = state === 'countdown'
   const isBusy      = isRecording || isCountdown || state === 'requesting'
@@ -44,7 +43,7 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
         </div>
 
         <div className="track-content track-content--col">
-          {/* ── Device pickers — always visible ───────────── */}
+          {/* ── Device selectors — always visible ─────────── */}
           <div className="device-row">
             <div className="device-picker">
               <span className="device-picker-label">MIC</span>
@@ -80,21 +79,18 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
               </select>
             </div>
 
-            {/* Refresh button — re-enumerates and populates labels after first permission grant */}
+            {/* Re-enumerate + reconnect. Labels populate only after first permission grant. */}
             <button
               className="btn btn-sm btn-ghost device-refresh-btn"
-              onClick={() => {
-                refreshDevices()
-                if (!streamRef) requestCamera().catch(() => {})
-              }}
+              onClick={() => { refreshDevices(); requestCamera().catch(() => {}) }}
               disabled={isBusy}
-              title="Refresh device list"
+              title="Refresh devices & reconnect"
             >
               ↺
             </button>
           </div>
 
-          {/* ── Status row ─────────────────────────────────── */}
+          {/* ── Status ───────────────────────────────────── */}
           <div className="rec-status-row">
             <VUMeter level={micLevel} bars={16} />
             <div className="rec-inline-status">
@@ -104,10 +100,26 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
               {isRecording            && <span className="status-chip status-rec">● {formattedTime}</span>}
               {state === 'done'       && <span className="status-chip status-done">✓ Done</span>}
             </div>
-            {permError && (
-              <span className="track-error" title={permError}>⚠ 權限錯誤</span>
+            {/* Audio-only fallback notice */}
+            {!hasVideo && !permError && state !== 'idle' && state !== 'requesting' && (
+              <span className="status-chip status-idle" style={{ fontSize: '0.56rem' }}>
+                Audio only
+              </span>
             )}
           </div>
+
+          {/* Permission error — inline, non-blocking */}
+          {permError && (
+            <div className="perm-error-bar">
+              <span>⚠ {permError}</span>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => requestCamera().catch(() => {})}
+              >
+                重新授權
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="track-end-btns">
@@ -119,13 +131,15 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
           >
             {isRecording ? '⏹' : '⏺'}
           </button>
-          <button
-            className={`btn btn-sm btn-ghost ${camExpanded ? 'btn-ghost--active' : ''}`}
-            onClick={() => setCamExpanded((o) => !o)}
-            title="Camera preview"
-          >
-            📷
-          </button>
+          {hasVideo && (
+            <button
+              className={`btn btn-sm btn-ghost ${camExpanded ? 'btn-ghost--active' : ''}`}
+              onClick={() => setCamExpanded((o) => !o)}
+              title="Camera preview"
+            >
+              📷
+            </button>
+          )}
           <button
             className={`btn btn-sm btn-ghost ${fxOpen ? 'btn-ghost--active' : ''}`}
             onClick={() => setFxOpen((o) => !o)}
@@ -136,20 +150,10 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
         </div>
       </div>
 
-      {/* ── Camera preview ──────────────────────────────────── */}
-      {camExpanded && (
+      {/* Camera preview — only shown when video stream is available */}
+      {hasVideo && camExpanded && (
         <div className="track-camera-wrap">
           <video ref={videoRef} className="track-camera-video" autoPlay playsInline muted />
-
-          {permError && (
-            <div className="track-camera-overlay">
-              <div style={{ fontSize: '1.5rem' }}>📵</div>
-              <div style={{ fontSize: '0.78rem', textAlign: 'center', maxWidth: 240 }}>{permError}</div>
-              <button className="btn btn-sm btn-ghost" onClick={() => requestCamera().catch(() => {})}>
-                再試一次
-              </button>
-            </div>
-          )}
 
           {isCountdown && (
             <div className="track-camera-overlay">
@@ -164,7 +168,6 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
         </div>
       )}
 
-      {/* ── Mic FX (monitor only) ──────────────────────────── */}
       {fxOpen && (
         <div className="track-fx-panel">
           <FxChain

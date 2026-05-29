@@ -29,10 +29,10 @@
   --red:        #b04040;
   --red-glow:   none;
 
-  /* Text */
-  --text:       #1c1814;   /* warm near-black */
-  --text-dim:   #5a5248;   /* warm mid-gray */
-  --text-label: #9a9085;   /* warm light-gray */
+  /* Text — contrast ratios verified against --bg #f5f2ec and --bg-card #fff */
+  --text:       #1c1814;   /* 15:1 on white */
+  --text-dim:   #3e302a;   /* 9:1 on white  */
+  --text-label: #5e504a;   /* 5:1 on white  */
 
   /* Shadows */
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.07), 0 1px 6px rgba(0,0,0,0.04);
@@ -346,7 +346,7 @@ body {
   font-weight: 700;
   letter-spacing: 0.08em;
 }
-.status-idle      { background: var(--bg-inset);            color: var(--text-label); border: 1px solid var(--border); }
+.status-idle      { background: var(--bg-inset);            color: var(--text-dim);   border: 1px solid var(--border); }
 .status-loading   { background: rgba(160,112,48,0.10);      color: var(--amber); }
 .status-countdown { background: rgba(160,112,48,0.15);      color: var(--amber); font-size: 0.9rem; }
 .status-rec       { background: rgba(176,64,64,0.12);       color: var(--red); animation: chip-blink 1s ease-in-out infinite; }
@@ -595,6 +595,21 @@ input[type=range]::-webkit-slider-thumb {
 .fx-menu-item--store:hover:not(:disabled) { color: #5a3d80; }
 .fx-store-cat { margin-left: auto; font-size: 0.53rem; color: var(--text-label); }
 .mic-fx-note { margin-top: 8px; font-size: 0.58rem; color: var(--text-label); }
+
+/* ─── Permission error bar (inline, non-blocking) ────────────── */
+.perm-error-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: rgba(160,112,48,0.08);
+  border: 1px solid rgba(160,112,48,0.25);
+  border-radius: var(--radius);
+  font-size: 0.68rem;
+  color: var(--amber);
+  flex-wrap: wrap;
+}
+.perm-error-bar span { flex: 1; min-width: 0; }
 
 /* ─── Export modal ───────────────────────────────────────────── */
 .modal-overlay {

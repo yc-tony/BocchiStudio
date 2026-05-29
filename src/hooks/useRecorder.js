@@ -1,6 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
-function getBestMimeType() {
+function getBestMimeType(hasVideo) {
+  if (!hasVideo) {
+    const audio = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']
+    return audio.find((t) => MediaRecorder.isTypeSupported(t)) || ''
+  }
   const candidates = [
     'video/webm;codecs=vp8,opus',
     'video/webm;codecs=vp9,opus',
@@ -11,12 +15,13 @@ function getBestMimeType() {
 }
 
 export function useRecorder() {
-  const [state, setState]         = useState('idle') // idle | requesting | countdown | recording | done
+  const [state, setState]         = useState('idle')
   const [countdown, setCountdown] = useState(null)
   const [elapsed, setElapsed]     = useState(0)
   const [blob, setBlob]           = useState(null)
   const [micLevel, setMicLevel]   = useState(0)
   const [permError, setPermError] = useState('')
+  const [hasVideo, setHasVideo]   = useState(false) // false = audio-only stream
 
   const [audioDevices, setAudioDevices] = useState([])
   const [videoDevices, setVideoDevices] = useState([])
@@ -66,8 +71,6 @@ export function useRecorder() {
     if (videoRef.current) videoRef.current.srcObject = null
   }, [stopVU])
 
-  // Re-enumerate devices and refresh labels. Labels are empty strings until
-  // the user has granted camera/mic permission at least once in this session.
   const refreshDevices = useCallback(async () => {
     try {
       const all = await navigator.mediaDevices.enumerateDevices()
@@ -76,8 +79,6 @@ export function useRecorder() {
     } catch {}
   }, [])
 
-  // Enumerate on mount (labels may be empty before permission) and whenever
-  // devices are plugged in or removed.
   useEffect(() => {
     refreshDevices()
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices)
@@ -89,37 +90,54 @@ export function useRecorder() {
     setPermError('')
     const vId = videoId ?? selectedVideoId
     const aId = audioId ?? selectedAudioId
+
+    const audioConstraints = aId
+      ? { deviceId: { exact: aId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      : { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+
+    const videoConstraints = vId
+      ? { deviceId: { exact: vId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+
+    let stream = null
+
+    // Try video + audio first; fall back to audio-only if camera is unavailable or denied.
+    // This lets users with a recording interface but no camera still record audio.
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: vId
-          ? { deviceId: { exact: vId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-        audio: aId
-          ? { deviceId: { exact: aId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
-          : { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints,
+        audio: audioConstraints,
       })
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.muted = true
-        videoRef.current.play().catch(() => {})
+      setHasVideo(true)
+    } catch {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints })
+        setHasVideo(false)
+      } catch (audioErr) {
+        const msg = audioErr.name === 'NotAllowedError'
+          ? '麥克風權限被拒絕，請在瀏覽器設定中允許存取。'
+          : `裝置錯誤：${audioErr.message}`
+        setPermError(msg)
+        setState('idle')
+        throw audioErr
       }
-      startVU(stream)
-      setState('idle')
-      // Re-enumerate after permission: device labels now populated
-      await refreshDevices()
-      return stream
-    } catch (err) {
-      const msg = err.name === 'NotAllowedError'
-        ? '攝影機 / 麥克風權限被拒絕，請在瀏覽器設定中允許。'
-        : `裝置錯誤：${err.message}`
-      setPermError(msg)
-      setState('idle')
-      throw err
     }
+
+    streamRef.current = stream
+
+    const videoTracks = stream.getVideoTracks()
+    if (videoRef.current && videoTracks.length > 0) {
+      videoRef.current.srcObject = stream
+      videoRef.current.muted = true
+      videoRef.current.play().catch(() => {})
+    }
+
+    startVU(stream)
+    setState('idle')
+    await refreshDevices()
+    return stream
   }, [selectedVideoId, selectedAudioId, startVU, refreshDevices])
 
-  // Switch to a specific device: stop current stream and re-request
   const switchDevice = useCallback(async (type, deviceId) => {
     const newVId = type === 'video' ? deviceId : selectedVideoId
     const newAId = type === 'audio' ? deviceId : selectedAudioId
@@ -130,13 +148,11 @@ export function useRecorder() {
     await requestCamera(newVId, newAId).catch(() => {})
   }, [selectedVideoId, selectedAudioId, stopEverything, requestCamera])
 
-  // Accepts either an HTMLAudioElement (play/pause) or a callback (for DAWPage sync)
   const startRecording = useCallback(async (audioElOrCb) => {
     let stream = streamRef.current
     if (!stream) {
       try { stream = await requestCamera() } catch { return }
     }
-
     setState('countdown')
     for (let i = 3; i >= 1; i--) {
       setCountdown(i)
@@ -148,11 +164,15 @@ export function useRecorder() {
     else if (audioElOrCb) { audioElOrCb.currentTime = 0; audioElOrCb.play().catch(() => {}) }
 
     chunksRef.current = []
-    const mimeType = getBestMimeType()
-    const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 3_000_000 })
+    const hasVid = stream.getVideoTracks().length > 0
+    const mimeType = getBestMimeType(hasVid)
+    const mr = new MediaRecorder(stream, {
+      mimeType,
+      ...(hasVid ? { videoBitsPerSecond: 3_000_000 } : {}),
+    })
     mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
     mr.onstop = () => {
-      setBlob(new Blob(chunksRef.current, { type: mimeType || 'video/webm' }))
+      setBlob(new Blob(chunksRef.current, { type: mimeType || (hasVid ? 'video/webm' : 'audio/webm') }))
       setState('done')
     }
     mr.start(100)
@@ -189,7 +209,7 @@ export function useRecorder() {
   return {
     state, countdown, elapsed,
     formattedTime: formatTime(elapsed),
-    blob, micLevel, permError,
+    blob, micLevel, permError, hasVideo,
     audioDevices, videoDevices,
     selectedAudioId, selectedVideoId,
     videoRef, requestCamera, switchDevice, refreshDevices,
