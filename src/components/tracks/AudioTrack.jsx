@@ -131,7 +131,7 @@ const AudioTrack = forwardRef(function AudioTrack({ track, onUpdate, onRemove },
       <div className="track-lane-head">
 
         <div className="track-label">
-          <span className="track-type-icon">🎵</span>
+          <span className="track-type-dot track-type-dot--audio" />
           <span className="track-name">{track.name}</span>
         </div>
 

@@ -11,7 +11,8 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
   const {
     state, countdown, formattedTime, blob, micLevel, permError,
     audioDevices, videoDevices, selectedAudioId, selectedVideoId,
-    videoRef, requestCamera, switchDevice, startRecording, stopRecording, reset,
+    videoRef, requestCamera, switchDevice, refreshDevices,
+    startRecording, stopRecording,
   } = useRecorder()
 
   const micFx = usePluginChain()
@@ -20,76 +21,93 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
   const isCountdown = state === 'countdown'
   const isBusy      = isRecording || isCountdown || state === 'requesting'
 
-  // Request camera+mic on mount
   useEffect(() => {
     requestCamera().catch(() => {})
   }, []) // eslint-disable-line
 
-  // Bubble recorded blob to parent when done
   useEffect(() => {
     if (state === 'done' && blob) onUpdate(track.id, { recordedBlob: blob })
   }, [state, blob]) // eslint-disable-line
 
   const handleRec = async () => {
-    if (isRecording) {
-      stopRecording(onRecordStop)
-    } else {
-      await startRecording(onRecordStart)
-    }
+    if (isRecording) stopRecording(onRecordStop)
+    else await startRecording(onRecordStart)
   }
 
   return (
-    <div className="track-lane track-lane--recording">
+    <div className="track-lane track-lane--rec">
       <div className="track-lane-head">
+
         <div className="track-label">
-          <span className="track-type-icon">🎙</span>
+          <span className="track-type-dot track-type-dot--rec" />
           <span className="track-name">{track.name}</span>
         </div>
 
-        <div className="track-content">
-          <VUMeter level={micLevel} bars={14} />
+        <div className="track-content track-content--col">
+          {/* ── Device pickers — always visible ───────────── */}
+          <div className="device-row">
+            <div className="device-picker">
+              <span className="device-picker-label">MIC</span>
+              <select
+                className="device-select"
+                value={selectedAudioId}
+                onChange={(e) => switchDevice('audio', e.target.value)}
+                disabled={isBusy}
+              >
+                <option value="">Default</option>
+                {audioDevices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Input ${d.deviceId.slice(0, 8)}`}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div className="rec-inline-status">
-            {state === 'idle'       && <span className="status-chip status-idle">READY</span>}
-            {state === 'requesting' && <span className="status-chip status-loading">INIT…</span>}
-            {isCountdown            && <span className="status-chip status-countdown">{countdown}</span>}
-            {isRecording            && <span className="status-chip status-rec">● {formattedTime}</span>}
-            {state === 'done'       && <span className="status-chip status-done">✓ DONE</span>}
+            <div className="device-picker">
+              <span className="device-picker-label">CAM</span>
+              <select
+                className="device-select"
+                value={selectedVideoId}
+                onChange={(e) => switchDevice('video', e.target.value)}
+                disabled={isBusy}
+              >
+                <option value="">Default</option>
+                {videoDevices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Camera ${d.deviceId.slice(0, 8)}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Refresh button — re-enumerates and populates labels after first permission grant */}
+            <button
+              className="btn btn-sm btn-ghost device-refresh-btn"
+              onClick={() => {
+                refreshDevices()
+                if (!streamRef) requestCamera().catch(() => {})
+              }}
+              disabled={isBusy}
+              title="Refresh device list"
+            >
+              ↺
+            </button>
           </div>
 
-          {permError && <span className="track-error" title={permError}>⚠ 權限</span>}
-
-          {/* Device selectors */}
-          {audioDevices.length > 0 && (
-            <select
-              className="device-select"
-              value={selectedAudioId}
-              onChange={(e) => switchDevice('audio', e.target.value)}
-              disabled={isBusy}
-              title="Microphone"
-            >
-              {audioDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  🎙 {d.label || `Mic ${d.deviceId.slice(0, 6)}`}
-                </option>
-              ))}
-            </select>
-          )}
-          {videoDevices.length > 0 && (
-            <select
-              className="device-select"
-              value={selectedVideoId}
-              onChange={(e) => switchDevice('video', e.target.value)}
-              disabled={isBusy}
-              title="Camera"
-            >
-              {videoDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  📷 {d.label || `Camera ${d.deviceId.slice(0, 6)}`}
-                </option>
-              ))}
-            </select>
-          )}
+          {/* ── Status row ─────────────────────────────────── */}
+          <div className="rec-status-row">
+            <VUMeter level={micLevel} bars={16} />
+            <div className="rec-inline-status">
+              {state === 'idle'       && <span className="status-chip status-idle">Ready</span>}
+              {state === 'requesting' && <span className="status-chip status-loading">Init…</span>}
+              {isCountdown            && <span className="status-chip status-countdown">{countdown}</span>}
+              {isRecording            && <span className="status-chip status-rec">● {formattedTime}</span>}
+              {state === 'done'       && <span className="status-chip status-done">✓ Done</span>}
+            </div>
+            {permError && (
+              <span className="track-error" title={permError}>⚠ 權限錯誤</span>
+            )}
+          </div>
         </div>
 
         <div className="track-end-btns">
@@ -112,29 +130,31 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
             className={`btn btn-sm btn-ghost ${fxOpen ? 'btn-ghost--active' : ''}`}
             onClick={() => setFxOpen((o) => !o)}
           >
-            FX {fxOpen ? '▲' : '▼'}
+            FX
           </button>
-          <button className="track-remove-btn" onClick={() => onRemove(track.id)} title="Remove Track">✕</button>
+          <button className="track-remove-btn" onClick={() => onRemove(track.id)}>✕</button>
         </div>
       </div>
 
-      {/* Camera preview — collapsible */}
+      {/* ── Camera preview ──────────────────────────────────── */}
       {camExpanded && (
         <div className="track-camera-wrap">
           <video ref={videoRef} className="track-camera-video" autoPlay playsInline muted />
 
           {permError && (
-            <div className="track-camera-overlay track-camera-overlay--error">
-              <div>🚫</div>
-              <div style={{ fontSize: '0.75rem', textAlign: 'center', maxWidth: 220 }}>{permError}</div>
-              <button className="btn btn-sm btn-ghost" onClick={() => requestCamera().catch(() => {})}>重試</button>
+            <div className="track-camera-overlay">
+              <div style={{ fontSize: '1.5rem' }}>📵</div>
+              <div style={{ fontSize: '0.78rem', textAlign: 'center', maxWidth: 240 }}>{permError}</div>
+              <button className="btn btn-sm btn-ghost" onClick={() => requestCamera().catch(() => {})}>
+                再試一次
+              </button>
             </div>
           )}
 
           {isCountdown && (
-            <div className="track-camera-overlay track-camera-overlay--countdown">
+            <div className="track-camera-overlay">
               <div className="cam-countdown-num" key={countdown}>{countdown}</div>
-              <div className="cam-countdown-label">RECORDING STARTS…</div>
+              <div className="cam-countdown-label">Recording starts…</div>
             </div>
           )}
 
@@ -144,7 +164,7 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
         </div>
       )}
 
-      {/* Mic FX chain (monitor only) */}
+      {/* ── Mic FX (monitor only) ──────────────────────────── */}
       {fxOpen && (
         <div className="track-fx-panel">
           <FxChain
@@ -154,7 +174,7 @@ export default function RecordingTrack({ track, onUpdate, onRemove, onRecordStar
             onToggle={micFx.togglePlugin}
             onUpdateParam={micFx.updateParam}
           />
-          <div className="mic-fx-note">* FX 僅影響監聽，錄音為原始訊號</div>
+          <div className="mic-fx-note">FX 僅影響監聽，錄音保留原始訊號</div>
         </div>
       )}
     </div>

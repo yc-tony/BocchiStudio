@@ -28,7 +28,7 @@ export default function VideoTrack({ track, onUpdate, onRemove }) {
     <div className={`track-lane ${dragOver ? 'track-lane--drag' : ''}`}>
       <div className="track-lane-head">
         <div className="track-label">
-          <span className="track-type-icon">▶</span>
+          <span className="track-type-dot track-type-dot--video" />
           <span className="track-name">{track.name}</span>
         </div>
 

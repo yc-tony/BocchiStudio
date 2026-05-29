@@ -62,13 +62,10 @@ export default function DAWPage() {
       {/* ── Header ───────────────────────────────────── */}
       <header className="daw-header">
         <div className="daw-logo">
-          <div className="logo-screws">
-            <span className="screw" />
-            <span className="screw" />
-          </div>
+          <div className="logo-mark" />
           <div className="logo-text">
-            <span className="logo-main">BOCCHI STUDIO</span>
-            <span className="logo-sub">Virtual Cover DAW · v2.0</span>
+            <span className="logo-main">Bocchi Studio</span>
+            <span className="logo-sub">Virtual Cover DAW</span>
           </div>
         </div>
 

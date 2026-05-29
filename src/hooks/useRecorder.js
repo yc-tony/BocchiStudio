@@ -11,27 +11,26 @@ function getBestMimeType() {
 }
 
 export function useRecorder() {
-  const [state, setState]       = useState('idle') // idle | requesting | countdown | recording | done
+  const [state, setState]         = useState('idle') // idle | requesting | countdown | recording | done
   const [countdown, setCountdown] = useState(null)
-  const [elapsed, setElapsed]   = useState(0)
-  const [blob, setBlob]         = useState(null)
-  const [micLevel, setMicLevel] = useState(0)
+  const [elapsed, setElapsed]     = useState(0)
+  const [blob, setBlob]           = useState(null)
+  const [micLevel, setMicLevel]   = useState(0)
   const [permError, setPermError] = useState('')
 
-  // Available devices — populated after first permission grant
   const [audioDevices, setAudioDevices] = useState([])
   const [videoDevices, setVideoDevices] = useState([])
   const [selectedAudioId, setSelectedAudioId] = useState('')
   const [selectedVideoId, setSelectedVideoId] = useState('')
 
-  const videoRef          = useRef(null) // <video> element for live preview
-  const streamRef         = useRef(null)
-  const mediaRecorderRef  = useRef(null)
-  const chunksRef         = useRef([])
-  const timerRef          = useRef(null)
-  const analyserRef       = useRef(null)
-  const animFrameRef      = useRef(null)
-  const audioCtxRef       = useRef(null)
+  const videoRef         = useRef(null)
+  const streamRef        = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const chunksRef        = useRef([])
+  const timerRef         = useRef(null)
+  const analyserRef      = useRef(null)
+  const animFrameRef     = useRef(null)
+  const audioCtxRef      = useRef(null)
 
   const startVU = useCallback((stream) => {
     const ctx = new AudioContext()
@@ -67,25 +66,36 @@ export function useRecorder() {
     if (videoRef.current) videoRef.current.srcObject = null
   }, [stopVU])
 
-  // Enumerate devices after permission is granted (labels only available post-grant)
+  // Re-enumerate devices and refresh labels. Labels are empty strings until
+  // the user has granted camera/mic permission at least once in this session.
   const refreshDevices = useCallback(async () => {
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      setAudioDevices(devices.filter((d) => d.kind === 'audioinput'))
-      setVideoDevices(devices.filter((d) => d.kind === 'videoinput'))
+      const all = await navigator.mediaDevices.enumerateDevices()
+      setAudioDevices(all.filter((d) => d.kind === 'audioinput'))
+      setVideoDevices(all.filter((d) => d.kind === 'videoinput'))
     } catch {}
   }, [])
+
+  // Enumerate on mount (labels may be empty before permission) and whenever
+  // devices are plugged in or removed.
+  useEffect(() => {
+    refreshDevices()
+    navigator.mediaDevices.addEventListener('devicechange', refreshDevices)
+    return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices)
+  }, [refreshDevices])
 
   const requestCamera = useCallback(async (videoId, audioId) => {
     setState('requesting')
     setPermError('')
+    const vId = videoId ?? selectedVideoId
+    const aId = audioId ?? selectedAudioId
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: (videoId || selectedVideoId)
-          ? { deviceId: { exact: videoId || selectedVideoId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: vId
+          ? { deviceId: { exact: vId }, width: { ideal: 1280 }, height: { ideal: 720 } }
           : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-        audio: (audioId || selectedAudioId)
-          ? { deviceId: { exact: audioId || selectedAudioId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+        audio: aId
+          ? { deviceId: { exact: aId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
           : { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
       })
       streamRef.current = stream
@@ -96,6 +106,7 @@ export function useRecorder() {
       }
       startVU(stream)
       setState('idle')
+      // Re-enumerate after permission: device labels now populated
       await refreshDevices()
       return stream
     } catch (err) {
@@ -108,19 +119,18 @@ export function useRecorder() {
     }
   }, [selectedVideoId, selectedAudioId, startVU, refreshDevices])
 
-  // Re-request with new device selection
+  // Switch to a specific device: stop current stream and re-request
   const switchDevice = useCallback(async (type, deviceId) => {
-    if (type === 'audio') setSelectedAudioId(deviceId)
+    const newVId = type === 'video' ? deviceId : selectedVideoId
+    const newAId = type === 'audio' ? deviceId : selectedAudioId
     if (type === 'video') setSelectedVideoId(deviceId)
+    if (type === 'audio') setSelectedAudioId(deviceId)
     stopEverything()
-    const vId = type === 'video' ? deviceId : selectedVideoId
-    const aId = type === 'audio' ? deviceId : selectedAudioId
-    await requestCamera(vId, aId).catch(() => {})
+    setState('idle')
+    await requestCamera(newVId, newAId).catch(() => {})
   }, [selectedVideoId, selectedAudioId, stopEverything, requestCamera])
 
-  // startRecording accepts either an HTMLAudioElement (legacy) or a callback invoked
-  // at the exact moment recording begins (after countdown). DAWPage uses the callback
-  // to coordinate playback of all audio tracks.
+  // Accepts either an HTMLAudioElement (play/pause) or a callback (for DAWPage sync)
   const startRecording = useCallback(async (audioElOrCb) => {
     let stream = streamRef.current
     if (!stream) {
@@ -134,21 +144,15 @@ export function useRecorder() {
     }
     setCountdown(null)
 
-    // Sync trigger
-    if (typeof audioElOrCb === 'function') {
-      audioElOrCb()
-    } else if (audioElOrCb) {
-      audioElOrCb.currentTime = 0
-      audioElOrCb.play().catch(() => {})
-    }
+    if (typeof audioElOrCb === 'function') audioElOrCb()
+    else if (audioElOrCb) { audioElOrCb.currentTime = 0; audioElOrCb.play().catch(() => {}) }
 
     chunksRef.current = []
     const mimeType = getBestMimeType()
     const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 3_000_000 })
     mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
     mr.onstop = () => {
-      const b = new Blob(chunksRef.current, { type: mimeType || 'video/webm' })
-      setBlob(b)
+      setBlob(new Blob(chunksRef.current, { type: mimeType || 'video/webm' }))
       setState('done')
     }
     mr.start(100)
@@ -160,14 +164,9 @@ export function useRecorder() {
     setState('recording')
   }, [requestCamera])
 
-  // stopRecording accepts either an HTMLAudioElement (legacy) or a callback
   const stopRecording = useCallback((audioElOrCb) => {
-    if (typeof audioElOrCb === 'function') {
-      audioElOrCb()
-    } else if (audioElOrCb) {
-      audioElOrCb.pause()
-      audioElOrCb.currentTime = 0
-    }
+    if (typeof audioElOrCb === 'function') audioElOrCb()
+    else if (audioElOrCb) { audioElOrCb.pause(); audioElOrCb.currentTime = 0 }
     clearInterval(timerRef.current)
     if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop()
     stopEverything()
@@ -175,10 +174,7 @@ export function useRecorder() {
 
   const reset = useCallback(() => {
     stopEverything()
-    setBlob(null)
-    setElapsed(0)
-    setCountdown(null)
-    setState('idle')
+    setBlob(null); setElapsed(0); setCountdown(null); setState('idle')
     chunksRef.current = []
   }, [stopEverything])
 
@@ -196,7 +192,7 @@ export function useRecorder() {
     blob, micLevel, permError,
     audioDevices, videoDevices,
     selectedAudioId, selectedVideoId,
-    videoRef, requestCamera, switchDevice,
+    videoRef, requestCamera, switchDevice, refreshDevices,
     startRecording, stopRecording, reset,
   }
 }
