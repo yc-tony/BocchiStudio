@@ -4,6 +4,7 @@ import RecordingTrack from './tracks/RecordingTrack'
 import VideoTrack from './tracks/VideoTrack'
 import ExportModal from './ExportModal'
 import TransportBar from './TransportBar'
+import TimelineRuler from './TimelineRuler'
 
 let _nextId = 1
 const genId = () => `t${_nextId++}`
@@ -22,57 +23,66 @@ function makeTrack(type) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 export default function DAWPage() {
-  const [tracks, setTracks] = useState([makeTrack('audio'), makeTrack('recording')])
+  const [tracks, setTracks]         = useState([makeTrack('audio'), makeTrack('recording')])
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [exportOpen, setExportOpen]   = useState(false)
 
-  // ── Transport state ───────────────────────────────────────────
-  const [tState, setTState]       = useState('idle') // idle | countdown | playing | recording
+  // ── Transport ─────────────────────────────────────────────────
+  const [tState, setTState]       = useState('idle')
   const [countdown, setCountdown] = useState(null)
   const [position, setPosition]   = useState(0)
-  const [trackDurations, setTrackDurations] = useState({}) // id → seconds
+  const [trackDurations, setTrackDurations] = useState({})
 
   const posRef       = useRef(0)
   const rafRef       = useRef(null)
-  const startTimeRef = useRef(0) // Date.now() when play/record began
-
-  // All track refs — keyed by track.id
+  const startTimeRef = useRef(0)
   const trackRefsMap = useRef({})
 
   const projectDuration = Math.max(0, ...Object.values(trackDurations).filter(Number.isFinite))
 
-  // ── Position ticker ───────────────────────────────────────────
   const startTicker = useCallback(() => {
     startTimeRef.current = Date.now() - posRef.current * 1000
     const tick = () => {
-      const p = (Date.now() - startTimeRef.current) / 1000
-      posRef.current = p
-      setPosition(p)
+      posRef.current = (Date.now() - startTimeRef.current) / 1000
+      setPosition(posRef.current)
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
   }, [])
 
   const stopTicker = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    rafRef.current = null
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
   }, [])
 
-  // ── Transport actions ─────────────────────────────────────────
+  // ── handleSeek: always works, regardless of play state ───────
+  // Bug fix: previously only local audio was seeked; now all tracks seek together.
+  const handleSeek = useCallback((time) => {
+    const clamped = Math.max(0, isFinite(time) ? time : 0)
+    const wasPlaying = tState === 'playing'
+    if (wasPlaying) stopTicker()
+    posRef.current = clamped
+    setPosition(clamped)
+    Object.values(trackRefsMap.current).forEach((r) => r?.transportSeek(clamped))
+    if (wasPlaying) {
+      Object.values(trackRefsMap.current).forEach((r) => {
+        if (r?.getType() !== 'recording') r?.transportPlay(clamped)
+      })
+      startTicker()
+    }
+  }, [tState, stopTicker, startTicker])
 
   const handleStop = useCallback(() => {
     stopTicker()
     Object.values(trackRefsMap.current).forEach((r) => r?.transportStop())
-    posRef.current = 0
-    setPosition(0)
-    setCountdown(null)
-    setTState('idle')
+    posRef.current = 0; setPosition(0); setCountdown(null); setTState('idle')
   }, [stopTicker])
 
   const handlePlay = useCallback(() => {
     if (tState !== 'idle') return
     const pos = posRef.current
-    Object.values(trackRefsMap.current).forEach((r) => r?.transportPlay(pos))
+    Object.values(trackRefsMap.current).forEach((r) => {
+      if (r?.getType() !== 'recording') r?.transportPlay(pos)
+    })
     startTicker()
     setTState('playing')
   }, [tState, startTicker])
@@ -80,14 +90,9 @@ export default function DAWPage() {
   const handleRecord = useCallback(async () => {
     if (tState !== 'idle') return
     setTState('countdown')
-    for (let i = 3; i >= 1; i--) {
-      setCountdown(i)
-      await sleep(1000)
-    }
+    for (let i = 3; i >= 1; i--) { setCountdown(i); await sleep(1000) }
     setCountdown(null)
-    // Start audio/video tracks playing + recording tracks recording simultaneously
-    posRef.current = 0
-    setPosition(0)
+    posRef.current = 0; setPosition(0)
     Object.values(trackRefsMap.current).forEach((r) => {
       const type = r?.getType()
       if (type === 'audio' || type === 'video') r.transportPlay(0)
@@ -97,51 +102,42 @@ export default function DAWPage() {
     setTState('recording')
   }, [tState, startTicker])
 
-  // Seek all tracks to a given time (called when user drags any timeline scrubber)
-  const handleSeek = useCallback((time) => {
-    const wasPlaying = tState === 'playing'
-    if (wasPlaying) stopTicker()
-    posRef.current = time
-    setPosition(time)
-    Object.values(trackRefsMap.current).forEach((r) => r?.transportSeek(time))
-    if (wasPlaying) {
-      startTicker()
-      Object.values(trackRefsMap.current).forEach((r) => {
-        if (r?.getType() !== 'recording') r?.transportPlay(time)
-      })
-    }
-  }, [tState, stopTicker, startTicker])
-
-  // Stop ticker when project reaches the end
+  // Auto-stop at end of project
   useEffect(() => {
-    if (tState === 'playing' && projectDuration > 0 && position >= projectDuration) {
-      handleStop()
-    }
+    if (tState === 'playing' && projectDuration > 0 && position >= projectDuration) handleStop()
   }, [position, projectDuration, tState, handleStop])
 
   // ── Track management ──────────────────────────────────────────
-
-  const addTrack = (type) => {
-    setTracks((prev) => [...prev, makeTrack(type)])
-    setAddMenuOpen(false)
-  }
+  const addTrack = (type) => { setTracks((p) => [...p, makeTrack(type)]); setAddMenuOpen(false) }
 
   const removeTrack = useCallback((id) => {
-    setTracks((prev) => {
-      const t = prev.find((t) => t.id === id)
+    setTracks((p) => {
+      const t = p.find((t) => t.id === id)
       if (t?.objectUrl) URL.revokeObjectURL(t.objectUrl)
-      return prev.filter((t) => t.id !== id)
+      return p.filter((t) => t.id !== id)
     })
-    setTrackDurations((prev) => { const n = { ...prev }; delete n[id]; return n })
+    setTrackDurations((p) => { const n = { ...p }; delete n[id]; return n })
   }, [])
 
   const updateTrack = useCallback((id, patch) => {
-    setTracks((prev) => prev.map((t) => t.id === id ? { ...t, ...patch } : t))
+    setTracks((p) => p.map((t) => t.id === id ? { ...t, ...patch } : t))
   }, [])
 
   const handleDurationChange = useCallback((id, dur) => {
-    setTrackDurations((prev) => ({ ...prev, [id]: dur }))
+    setTrackDurations((p) => ({ ...p, [id]: dur }))
   }, [])
+
+  const commonProps = (track) => ({
+    key: track.id,
+    ref: (r) => { if (r) trackRefsMap.current[track.id] = r; else delete trackRefsMap.current[track.id] },
+    track,
+    onUpdate: updateTrack,
+    onRemove: removeTrack,
+    onDurationChange: handleDurationChange,
+    onSeek: handleSeek,   // global seek — fixes the seek-when-idle bug
+    position,
+    tState,
+  })
 
   return (
     <div className="daw">
@@ -179,37 +175,33 @@ export default function DAWPage() {
         </div>
       </header>
 
-      {/* ── Track list ───────────────────────────────── */}
-      <main className="daw-main">
-        {tracks.length === 0 ? (
-          <div className="tracks-empty">
-            <div className="tracks-empty-icon">🎛</div>
-            <div>點擊 + ADD TRACK 新增音軌</div>
-          </div>
-        ) : (
-          <div className="track-list">
-            {tracks.map((track) => {
-              const commonProps = {
-                key: track.id,
-                ref: (r) => {
-                  if (r) trackRefsMap.current[track.id] = r
-                  else delete trackRefsMap.current[track.id]
-                },
-                track,
-                onUpdate: updateTrack,
-                onRemove: removeTrack,
-                onDurationChange: handleDurationChange,
-                position,
-                tState,
-              }
-              if (track.type === 'audio')     return <AudioTrack     {...commonProps} />
-              if (track.type === 'recording') return <RecordingTrack {...commonProps} onSeek={handleSeek} />
-              if (track.type === 'video')     return <VideoTrack     {...commonProps} />
-              return null
-            })}
-          </div>
-        )}
-      </main>
+      {/* ── Two-column DAW area ───────────────────────── */}
+      <div className="daw-tracks-area">
+        {/* Sticky ruler row */}
+        <div className="daw-ruler-row">
+          <div className="daw-ruler-spacer" />
+          <TimelineRuler duration={projectDuration} />
+        </div>
+
+        {/* Scrollable track list */}
+        <div className="daw-tracks-scroll">
+          {tracks.length === 0 ? (
+            <div className="tracks-empty">
+              <div className="tracks-empty-icon">🎛</div>
+              <div>點擊 + ADD TRACK 新增音軌</div>
+            </div>
+          ) : (
+            <>
+              {tracks.map((track) => {
+                if (track.type === 'audio')     return <AudioTrack     {...commonProps(track)} />
+                if (track.type === 'recording') return <RecordingTrack {...commonProps(track)} />
+                if (track.type === 'video')     return <VideoTrack     {...commonProps(track)} />
+                return null
+              })}
+            </>
+          )}
+        </div>
+      </div>
 
       {/* ── Transport bar (bottom) ────────────────────── */}
       <TransportBar

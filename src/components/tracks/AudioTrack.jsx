@@ -1,16 +1,13 @@
 import { useRef, useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
 import {
-  usePluginChain,
-  buildAndConnectChain,
-  teardownChain,
-  updateLiveParam,
+  usePluginChain, buildAndConnectChain, teardownChain, updateLiveParam,
 } from '../../hooks/usePluginChain'
 import VUMeter from '../VUMeter'
 import FxChain from '../FxChain'
 import TrackTimeline from '../TrackTimeline'
 
 const AudioTrack = forwardRef(function AudioTrack(
-  { track, onUpdate, onRemove, onDurationChange, position, tState },
+  { track, onUpdate, onRemove, onDurationChange, onSeek, position, tState },
   ref,
 ) {
   const [level, setLevel]       = useState(0)
@@ -32,7 +29,7 @@ const AudioTrack = forwardRef(function AudioTrack(
 
   // ── Transport interface ───────────────────────────────────────
   useImperativeHandle(ref, () => ({
-    getType:     () => 'audio',
+    getType: () => 'audio',
     transportPlay(fromTime) {
       if (mutedRef.current || !audioObjRef.current || !track.objectUrl) return
       audioObjRef.current.currentTime = fromTime
@@ -40,25 +37,20 @@ const AudioTrack = forwardRef(function AudioTrack(
       audioObjRef.current.play().catch(() => {})
     },
     transportStop() {
-      if (!audioObjRef.current) return
-      audioObjRef.current.pause()
-      audioObjRef.current.currentTime = 0
+      audioObjRef.current?.pause()
+      if (audioObjRef.current) audioObjRef.current.currentTime = 0
     },
     transportSeek(time) {
-      if (!audioObjRef.current) return
-      audioObjRef.current.currentTime = time
+      if (audioObjRef.current) audioObjRef.current.currentTime = time
     },
-    transportStartRecord() { /* audio tracks don't record */ },
-    transportStopRecord()  { /* audio tracks don't record */ },
+    transportStartRecord() {},
+    transportStopRecord()  {},
     getDuration() { return audioObjRef.current?.duration || 0 },
   }), [track.objectUrl])
 
-  // ── AudioContext setup — fresh Audio() per file URL ───────────
-  // Uses `new Audio()` instead of a JSX <audio> to avoid
-  // "createMediaElementSource already connected" errors from React DOM reuse.
+  // ── Audio setup — fresh Audio() per URL to avoid createMediaElementSource error ──
   useEffect(() => {
     if (!track.objectUrl) return
-
     const audio = new Audio(track.objectUrl)
     audio.volume = track.volume ?? 0.8
     audio.muted  = mutedRef.current
@@ -72,12 +64,9 @@ const AudioTrack = forwardRef(function AudioTrack(
     analyser.fftSize = 256
     analyserRef.current = analyser
     analyser.connect(ctx.destination)
-
     nodeMapRef.current = buildAndConnectChain(ctx, src, fxRef.current, analyser)
 
-    audio.addEventListener('loadedmetadata', () => {
-      onDurationChange(track.id, audio.duration)
-    })
+    audio.addEventListener('loadedmetadata', () => onDurationChange(track.id, audio.duration))
 
     const data = new Uint8Array(analyser.frequencyBinCount)
     const tick = () => {
@@ -92,11 +81,8 @@ const AudioTrack = forwardRef(function AudioTrack(
       cancelAnimationFrame(rafRef.current)
       audio.pause()
       ctx.close()
-      audioObjRef.current = null
-      ctxRef.current      = null
-      srcRef.current      = null
-      analyserRef.current = null
-      nodeMapRef.current  = {}
+      audioObjRef.current = ctxRef.current = srcRef.current = analyserRef.current = null
+      nodeMapRef.current = {}
     }
   }, [track.objectUrl]) // eslint-disable-line
 
@@ -113,11 +99,7 @@ const AudioTrack = forwardRef(function AudioTrack(
 
   const handleFile = (file) => {
     if (!file?.type.startsWith('audio/')) return
-    onUpdate(track.id, {
-      blob: file,
-      objectUrl: URL.createObjectURL(file),
-      name: file.name.replace(/\.\w+$/, ''),
-    })
+    onUpdate(track.id, { blob: file, objectUrl: URL.createObjectURL(file), name: file.name.replace(/\.\w+$/, '') })
   }
 
   const handleParamUpdate = useCallback((id, key, val) => {
@@ -136,33 +118,34 @@ const AudioTrack = forwardRef(function AudioTrack(
   const duration = audioObjRef.current?.duration || 0
 
   return (
-    <div className={`track-lane ${dragOver ? 'track-lane--drag' : ''} ${muted ? 'track-lane--muted' : ''}`}>
-      <div className="track-lane-head">
-        <div className="track-label">
-          <span className="track-type-dot track-type-dot--audio" />
-          <span className="track-name">{track.name}</span>
-        </div>
+    <div className={`track-wrapper ${muted ? 'track-wrapper--muted' : ''}`}>
+      {/* ── Main row ───────────────────────────────────── */}
+      <div className="track-row">
 
-        <div className="track-content">
-          {!track.objectUrl ? (
-            <div
-              className="track-dropzone"
-              onClick={() => document.getElementById(`af-${track.id}`)?.click()}
-              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]) }}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-              onDragLeave={() => setDragOver(false)}
-            >
-              拖曳音訊至此，或點擊上傳
-              <input
-                id={`af-${track.id}`} type="file" accept="audio/*"
-                style={{ display: 'none' }}
-                onChange={(e) => handleFile(e.target.files?.[0])}
-              />
+        {/* Left: control block */}
+        <div className="track-hd">
+          <div className="track-hd-top">
+            <span className="track-type-dot track-type-dot--audio" />
+            <span className="track-name">{track.name}</span>
+            <div className="track-hd-actions">
+              <button
+                className={`hd-btn ${muted ? 'hd-btn--muted' : ''}`}
+                onClick={toggleMute}
+                title={muted ? 'Unmute' : 'Mute'}
+              >M</button>
+              <button
+                className={`hd-btn ${fxOpen ? 'hd-btn--active' : ''}`}
+                onClick={() => setFxOpen((o) => !o)}
+              >FX</button>
+              <button className="hd-btn hd-btn--remove" onClick={() => onRemove(track.id)}>✕</button>
             </div>
-          ) : (
+          </div>
+
+          {track.objectUrl && (
             <>
-              <VUMeter level={muted ? 0 : level} bars={14} />
-              <span className="track-filename">{track.name}</span>
+              <div className="hd-vu">
+                <VUMeter level={muted ? 0 : level} bars={18} />
+              </div>
               <div className="track-vol-row">
                 <span className="track-vol-label">VOL</span>
                 <input
@@ -176,45 +159,47 @@ const AudioTrack = forwardRef(function AudioTrack(
           )}
         </div>
 
-        <div className="track-end-btns">
-          <button
-            className={`btn btn-sm btn-ghost mute-btn ${muted ? 'mute-btn--on' : ''}`}
-            onClick={toggleMute}
-            title={muted ? 'Unmute' : 'Mute'}
-          >
-            {muted ? '🔇' : 'M'}
-          </button>
-          <button
-            className={`btn btn-sm btn-ghost ${fxOpen ? 'btn-ghost--active' : ''}`}
-            onClick={() => setFxOpen((o) => !o)}
-          >
-            FX
-          </button>
-          <button className="track-remove-btn" onClick={() => onRemove(track.id)}>✕</button>
-        </div>
-      </div>
-
-      {/* Timeline / scrubber */}
-      {track.objectUrl && (
+        {/* Right: timeline cell */}
         <TrackTimeline
           position={position}
           duration={duration}
           isRecording={false}
-          onSeek={(t) => {
-            if (audioObjRef.current) audioObjRef.current.currentTime = t
-          }}
-        />
-      )}
+          fillClass="tl-fill--audio"
+          label={track.objectUrl ? track.name : null}
+          onSeek={onSeek}
+        >
+          {!track.objectUrl && (
+            <div
+              className="tl-drop"
+              onClick={() => document.getElementById(`af-${track.id}`)?.click()}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]) }}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+            >
+              🎵 拖曳音訊至此，或點擊上傳
+              <input
+                id={`af-${track.id}`} type="file" accept="audio/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleFile(e.target.files?.[0])}
+              />
+            </div>
+          )}
+        </TrackTimeline>
+      </div>
 
+      {/* FX chain expansion row */}
       {fxOpen && (
-        <div className="track-fx-panel">
-          <FxChain
-            plugins={fx.plugins}
-            onAdd={fx.addPlugin}
-            onRemove={fx.removePlugin}
-            onToggle={fx.togglePlugin}
-            onUpdateParam={handleParamUpdate}
-          />
+        <div className="track-addon-row">
+          <div className="track-addon-hd" />
+          <div className="track-addon-body">
+            <FxChain
+              plugins={fx.plugins}
+              onAdd={fx.addPlugin}
+              onRemove={fx.removePlugin}
+              onToggle={fx.togglePlugin}
+              onUpdateParam={handleParamUpdate}
+            />
+          </div>
         </div>
       )}
     </div>

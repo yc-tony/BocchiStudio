@@ -1,95 +1,99 @@
 import { useRef } from 'react'
 
-function fmt(s) {
-  if (!isFinite(s) || s < 0) s = 0
-  const m   = Math.floor(s / 60).toString().padStart(2, '0')
-  const sec = Math.floor(s % 60).toString().padStart(2, '0')
-  return `${m}:${sec}`
-}
+// Wraps the right-side timeline cell of a track.
+// Handles click + drag seeking and renders progress fill + playhead.
+// onSeek must be DAWPage's global handleSeek so all tracks move together.
+export default function TrackTimeline({
+  position,
+  duration,
+  isRecording,
+  recElapsed,   // seconds elapsed during active recording (grows live)
+  onSeek,
+  fillClass,    // CSS class for the fill color (per track type)
+  label,        // filename/track label overlay
+  children,     // extra content (e.g. drop zone override)
+}) {
+  const ref = useRef(null)
 
-// Per-track scrubber bar. All tracks share the same global position from DAWPage.
-// Dragging calls onSeek(time) which DAWPage uses to seek all tracks together.
-export default function TrackTimeline({ position, duration, isRecording, onSeek }) {
-  const barRef = useRef(null)
-
-  const pct = (duration > 0)
-    ? Math.min(100, (position / duration) * 100)
-    : isRecording ? Math.min(100, (position / Math.max(position, 1)) * 0) : 0
-
-  const recPct = isRecording ? 100 : 0 // recording fill grows behind playhead
-
-  const getTimeFromEvent = (clientX) => {
-    const rect = barRef.current?.getBoundingClientRect()
-    if (!rect || !duration) return null
-    const x = Math.max(0, Math.min(clientX - rect.left, rect.width))
-    return (x / rect.width) * duration
-  }
+  const pct = duration > 0 ? Math.min(100, (position / duration) * 100) : 0
+  const recPct = isRecording && recElapsed > 0
+    ? Math.min(100, (recElapsed / Math.max(recElapsed + 0.01, 1)) * 100)
+    : 0
+  const showPlayhead = duration > 0 || isRecording
 
   const handleMouseDown = (e) => {
+    if (!duration && !isRecording) return
     e.preventDefault()
-    const t = getTimeFromEvent(e.clientX)
-    if (t !== null) onSeek(t)
-
-    const onMove = (me) => {
-      const t2 = getTimeFromEvent(me.clientX)
-      if (t2 !== null) onSeek(t2)
+    const rect = ref.current.getBoundingClientRect()
+    const calc = (x) =>
+      duration > 0 ? Math.max(0, Math.min((x - rect.left) / rect.width, 1)) * duration : 0
+    onSeek(calc(e.clientX))
+    const move = (me) => onSeek(calc(me.clientX))
+    const up = () => {
+      document.removeEventListener('mousemove', move)
+      document.removeEventListener('mouseup', up)
     }
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-    }
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
+    document.addEventListener('mousemove', move)
+    document.addEventListener('mouseup', up)
   }
 
   const handleTouchStart = (e) => {
-    const t = getTimeFromEvent(e.touches[0].clientX)
-    if (t !== null) onSeek(t)
-
-    const onMove = (te) => {
-      const t2 = getTimeFromEvent(te.touches[0].clientX)
-      if (t2 !== null) onSeek(t2)
+    if (!duration && !isRecording) return
+    const rect = ref.current.getBoundingClientRect()
+    const calc = (x) =>
+      duration > 0 ? Math.max(0, Math.min((x - rect.left) / rect.width, 1)) * duration : 0
+    onSeek(calc(e.touches[0].clientX))
+    const move = (te) => onSeek(calc(te.touches[0].clientX))
+    const end = () => {
+      document.removeEventListener('touchmove', move)
+      document.removeEventListener('touchend', end)
     }
-    const onEnd = () => {
-      document.removeEventListener('touchmove', onMove)
-      document.removeEventListener('touchend', onEnd)
-    }
-    document.addEventListener('touchmove', onMove, { passive: false })
-    document.addEventListener('touchend', onEnd)
+    document.addEventListener('touchmove', move, { passive: false })
+    document.addEventListener('touchend', end)
   }
 
   return (
     <div
-      ref={barRef}
-      className={`track-timeline ${!duration && !isRecording ? 'track-timeline--empty' : ''}`}
+      ref={ref}
+      className="track-tl"
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
     >
-      {/* Recording fill (red, grows as recording progresses) */}
+      {/* Recording grow fill (red, expands right as recording proceeds) */}
       {isRecording && (
-        <div className="track-timeline-rec" style={{ width: `${Math.min(100, (position / Math.max(position + 1, 1)) * 100)}%` }} />
+        <div className="tl-fill tl-fill--rec-grow" />
       )}
 
-      {/* Playback fill */}
+      {/* Playback progress fill */}
       {duration > 0 && (
-        <div className="track-timeline-fill" style={{ width: `${pct}%` }} />
+        <div className={`tl-fill ${fillClass}`} style={{ width: `${pct}%` }} />
       )}
 
-      {/* Playhead dot */}
-      {(duration > 0 || isRecording) && (
-        <div
-          className="track-timeline-head"
-          style={{ left: `calc(${pct}% - 5px)` }}
-        />
-      )}
+      {/* File / track label */}
+      {label && <span className="tl-label">{label}</span>}
 
-      {/* Duration label */}
+      {/* Any child content (e.g. drop zone) */}
+      {children}
+
+      {/* Duration marker */}
       {duration > 0 && (
-        <span className="track-timeline-dur">{fmt(duration)}</span>
+        <span className="tl-dur">{fmtTime(duration)}</span>
       )}
-      {isRecording && !duration && (
-        <span className="track-timeline-dur">{fmt(position)}</span>
+      {isRecording && (
+        <span className="tl-dur tl-dur--rec">{fmtTime(recElapsed ?? 0)}</span>
+      )}
+
+      {/* Playhead vertical line */}
+      {showPlayhead && (
+        <div className="tl-playhead" style={{ left: `${pct}%` }} />
       )}
     </div>
   )
+}
+
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) s = 0
+  const m   = Math.floor(s / 60).toString().padStart(2, '0')
+  const sec = Math.floor(s % 60).toString().padStart(2, '0')
+  return `${m}:${sec}`
 }
