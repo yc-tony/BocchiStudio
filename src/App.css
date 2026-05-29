@@ -436,61 +436,35 @@ input[type=range]::-webkit-slider-thumb:active { cursor: grabbing; }
   max-width: 600px;
 }
 
-.url-input-wrap {
+/* ─── Upload zone (drag-and-drop) ────────────────────────────── */
+.upload-zone {
   display: flex;
-  gap: 10px;
-  align-items: stretch;
-}
-
-.url-prefix {
-  display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 0 12px;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 24px;
+  border: 2px dashed var(--border-hi);
+  border-radius: var(--radius);
   background: var(--bg-inset);
-  border: 1px solid var(--border-hi);
-  border-right: none;
-  border-radius: var(--radius) 0 0 var(--radius);
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-.url-input-wrap .input-field {
-  border-radius: 0;
-  border-left: none;
-  border-right: none;
-}
-.url-input-wrap .btn {
-  border-radius: 0 var(--radius) var(--radius) 0;
-}
-
-.url-status {
-  margin-top: 12px;
-  min-height: 24px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.78rem;
-}
-.url-status.error { color: var(--red); }
-.url-status.loading { color: var(--amber); }
-.url-status.success { color: var(--green); }
-
-.upload-fallback {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.75rem;
-  color: var(--text-dim);
-}
-.upload-fallback input[type=file] { display: none; }
-.upload-fallback label {
   cursor: pointer;
-  color: var(--blue);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  transition: border-color 0.2s, background 0.2s;
+  text-align: center;
+}
+.upload-zone:hover {
+  border-color: var(--green-dim);
+  background: rgba(0, 255, 136, 0.04);
+}
+.upload-icon { font-size: 2.4rem; }
+.upload-main {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.05em;
+}
+.upload-hint {
+  font-size: 0.7rem;
+  color: var(--text-label);
 }
 
 .how-it-works {
@@ -890,6 +864,220 @@ input[type=range]::-webkit-slider-thumb:active { cursor: grabbing; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }
 
+/* ─── FX Chain ───────────────────────────────────────────────── */
+.fx-chain {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.fx-chain-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.fx-chain-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  color: var(--text-label);
+  font-weight: 700;
+}
+
+.fx-chain-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fx-empty-hint {
+  font-size: 0.65rem;
+  color: var(--text-label);
+  padding: 6px 0;
+}
+
+/* ─── Plugin slot ────────────────────────────────────────────── */
+.fx-slot {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-inset);
+}
+.fx-slot--on    { border-color: var(--border-hi); }
+.fx-slot--bypassed { opacity: 0.5; }
+
+.fx-slot-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.fx-slot-head:hover { background: rgba(255,255,255,0.03); }
+
+.fx-bypass-btn {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border-hi);
+  background: transparent;
+  color: var(--text-label);
+  cursor: pointer;
+  font-size: 0.55rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+.fx-bypass-btn.on {
+  border-color: var(--green-dim);
+  color: var(--green);
+  box-shadow: 0 0 6px rgba(0,255,136,0.4);
+}
+
+.fx-slot-name {
+  flex: 1;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+.fx-slot--on .fx-slot-name { color: var(--text); }
+
+.fx-slot-chevron {
+  font-size: 0.5rem;
+  color: var(--text-label);
+}
+.fx-slot-remove {
+  background: transparent;
+  border: none;
+  color: var(--text-label);
+  cursor: pointer;
+  font-size: 0.65rem;
+  padding: 0 2px;
+  line-height: 1;
+}
+.fx-slot-remove:hover { color: var(--red); }
+
+/* Store plugin (locked) */
+.fx-slot--store {
+  border-color: #3a2a5a;
+  background: rgba(85,51,170,0.08);
+}
+.fx-slot--store .fx-slot-head { cursor: default; }
+.fx-slot-lock { font-size: 0.7rem; }
+.fx-slot--store .fx-slot-name { color: #cc88ff; }
+.fx-slot-locked-cta {
+  font-size: 0.6rem;
+  color: #9966cc;
+  padding: 0 8px 6px;
+  letter-spacing: 0.08em;
+}
+
+/* Plugin params (expanded) */
+.fx-slot-params {
+  padding: 6px 10px 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fx-param-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 44px;
+  align-items: center;
+  gap: 6px;
+}
+.fx-param-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  color: var(--text-label);
+  font-weight: 700;
+}
+.fx-param-val {
+  font-size: 0.6rem;
+  color: var(--green);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Add FX dropdown ────────────────────────────────────────── */
+.fx-add-wrap {
+  position: relative;
+}
+.fx-add-btn { padding: 4px 10px; font-size: 0.6rem; }
+
+.fx-add-menu {
+  position: absolute;
+  right: 0; top: 100%;
+  margin-top: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  min-width: 200px;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+
+.fx-menu-group {
+  padding: 6px 12px 4px;
+  font-size: 0.55rem;
+  letter-spacing: 0.15em;
+  color: var(--text-label);
+  font-weight: 700;
+  border-top: 1px solid var(--border);
+  background: rgba(0,0,0,0.2);
+}
+.fx-menu-group:first-child { border-top: none; }
+
+.fx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+}
+.fx-menu-item:hover:not(:disabled) {
+  background: rgba(255,255,255,0.06);
+  color: var(--text);
+}
+.fx-menu-icon { font-size: 0.8rem; width: 16px; text-align: center; }
+
+.fx-menu-item--disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.fx-menu-badge {
+  margin-left: auto;
+  font-size: 0.55rem;
+  color: var(--amber);
+  letter-spacing: 0.05em;
+}
+
+.fx-menu-item--store { color: #9966cc; }
+.fx-menu-item--store:hover:not(:disabled) { color: #cc88ff; }
+.fx-store-cat {
+  margin-left: auto;
+  font-size: 0.55rem;
+  color: var(--text-label);
+}
+
+/* ─── Mic FX note ────────────────────────────────────────────── */
+.mic-fx-note {
+  margin-top: 8px;
+  font-size: 0.6rem;
+  color: var(--text-label);
+  letter-spacing: 0.05em;
+}
+
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .studio-top-row {
@@ -901,8 +1089,4 @@ input[type=range]::-webkit-slider-thumb:active { cursor: grabbing; }
 }
 @media (max-width: 600px) {
   .app-main { padding: 16px; }
-  .url-input-wrap { flex-direction: column; }
-  .url-prefix { border-radius: var(--radius) var(--radius) 0 0; border-right: 1px solid var(--border-hi); border-bottom: none; }
-  .url-input-wrap .input-field { border-radius: 0; border: 1px solid var(--border-hi); border-top: none; border-bottom: none; }
-  .url-input-wrap .btn { border-radius: 0 0 var(--radius) var(--radius); }
 }

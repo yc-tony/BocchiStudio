@@ -4,17 +4,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // SharedArrayBuffer (required by FFmpeg.wasm) needs these COOP/COEP headers
     headers: {
       'Cross-Origin-Embedder-Policy': 'require-corp',
       'Cross-Origin-Opener-Policy': 'same-origin',
-    },
-    proxy: {
-      '/cobalt-api': {
-        target: 'https://api.cobalt.tools',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/cobalt-api/, ''),
-        secure: true,
-      },
     },
   },
   optimizeDeps: {
