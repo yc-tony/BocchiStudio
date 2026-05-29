@@ -61,6 +61,7 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+/* header + transport are fixed height; main scrolls between them */
 
 /* ─── Header ─────────────────────────────────────────────────── */
 .daw-header {
@@ -696,6 +697,164 @@ input[type=range]::-webkit-slider-thumb {
 .ai-upsell-left { flex: 1; }
 .ai-upsell-title { font-size: 0.8rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
 .ai-upsell-desc { font-size: 0.68rem; color: var(--text-dim); line-height: 1.6; }
+
+/* ─── Track muted state ──────────────────────────────────────── */
+.track-lane--muted { opacity: 0.5; }
+.track-lane--muted .track-label { text-decoration: line-through; }
+
+/* ─── Mute button ────────────────────────────────────────────── */
+.mute-btn { font-size: 0.68rem; min-width: 32px; }
+.mute-btn--on {
+  background: rgba(176,64,64,0.08) !important;
+  border-color: var(--red) !important;
+  color: var(--red) !important;
+}
+
+/* ─── Track timeline (scrubber) ──────────────────────────────── */
+.track-timeline {
+  position: relative;
+  height: 20px;
+  background: var(--bg-inset);
+  border-top: 1px solid var(--border);
+  cursor: crosshair;
+  user-select: none;
+  overflow: visible;
+}
+.track-timeline--empty {
+  cursor: default;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--border) 0px,
+    var(--border) 1px,
+    transparent 1px,
+    transparent 24px
+  );
+}
+
+/* Playback progress fill */
+.track-timeline-fill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  background: rgba(110,79,58,0.18);
+  border-right: 1px solid var(--accent-mid);
+  pointer-events: none;
+}
+
+/* Recording fill (expands red as recording proceeds) */
+.track-timeline-rec {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  background: rgba(176,64,64,0.12);
+  border-right: 1px solid var(--red);
+  pointer-events: none;
+}
+
+/* Playhead dot */
+.track-timeline-head {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Duration label (right side) */
+.track-timeline-dur {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.58rem;
+  color: var(--text-label);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Transport bar ──────────────────────────────────────────── */
+.transport-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  height: 56px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -1px 6px rgba(0,0,0,0.04);
+}
+
+.transport-time {
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 90px;
+}
+.transport-pos { color: var(--text); }
+.transport-dur { color: var(--text-label); font-weight: 400; }
+
+.transport-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tbtn {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-hi);
+  background: var(--bg-card);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1rem;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.tbtn:hover:not(:disabled) {
+  border-color: var(--accent-mid);
+  color: var(--accent);
+  transform: scale(1.05);
+}
+.tbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.tbtn--play.tbtn--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(110,79,58,0.06);
+}
+.tbtn--rec {
+  border-color: var(--red);
+  color: var(--red);
+}
+.tbtn--rec.tbtn--active {
+  background: rgba(176,64,64,0.1);
+  animation: rec-pulse 1.5s ease-in-out infinite;
+}
+.tbtn-countdown {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.transport-status {
+  min-width: 90px;
+  display: flex;
+  justify-content: flex-end;
+}
+.transport-rec-badge {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--red); animation: chip-blink 1s ease-in-out infinite;
+}
+.transport-play-badge {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 0.08em;
+  color: var(--accent);
+}
 
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 700px) {

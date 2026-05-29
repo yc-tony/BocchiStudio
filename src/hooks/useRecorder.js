@@ -148,6 +148,39 @@ export function useRecorder() {
     await requestCamera(newVId, newAId).catch(() => {})
   }, [selectedVideoId, selectedAudioId, stopEverything, requestCamera])
 
+  // Starts recording immediately — no countdown.
+  // Used by the transport system which handles its own countdown.
+  const startRecordingImmediate = useCallback(async () => {
+    let stream = streamRef.current
+    if (!stream) {
+      try { stream = await requestCamera() } catch { return }
+    }
+    chunksRef.current = []
+    const hasVid = stream.getVideoTracks().length > 0
+    const mimeType = getBestMimeType(hasVid)
+    const mr = new MediaRecorder(stream, {
+      mimeType,
+      ...(hasVid ? { videoBitsPerSecond: 3_000_000 } : {}),
+    })
+    mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+    mr.onstop = () => {
+      setBlob(new Blob(chunksRef.current, { type: mimeType || (hasVid ? 'video/webm' : 'audio/webm') }))
+      setState('done')
+    }
+    mr.start(100)
+    mediaRecorderRef.current = mr
+    const start = Date.now()
+    setElapsed(0)
+    timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 500)
+    setState('recording')
+  }, [requestCamera])
+
+  const stopRecordingImmediate = useCallback(() => {
+    clearInterval(timerRef.current)
+    if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop()
+    stopEverything()
+  }, [stopEverything])
+
   const startRecording = useCallback(async (audioElOrCb) => {
     let stream = streamRef.current
     if (!stream) {
@@ -213,6 +246,8 @@ export function useRecorder() {
     audioDevices, videoDevices,
     selectedAudioId, selectedVideoId,
     videoRef, requestCamera, switchDevice, refreshDevices,
-    startRecording, stopRecording, reset,
+    startRecording, stopRecording,
+    startRecordingImmediate, stopRecordingImmediate,
+    reset,
   }
 }

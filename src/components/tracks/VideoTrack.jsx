@@ -1,14 +1,40 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react'
+import TrackTimeline from '../TrackTimeline'
 
-export default function VideoTrack({ track, onUpdate, onRemove }) {
+const VideoTrack = forwardRef(function VideoTrack(
+  { track, onUpdate, onRemove, onDurationChange, position, tState },
+  ref,
+) {
   const videoRef             = useRef(null)
-  const [playing, setPlaying] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [expanded, setExpanded] = useState(true)
+  const [muted, setMuted]       = useState(false)
+  const mutedRef = useRef(false)
+
+  // ── Transport interface ───────────────────────────────────────
+  useImperativeHandle(ref, () => ({
+    getType: () => 'video',
+    transportPlay(fromTime) {
+      if (mutedRef.current || !videoRef.current || !track.objectUrl) return
+      videoRef.current.currentTime = fromTime
+      videoRef.current.play().catch(() => {})
+    },
+    transportStop() {
+      if (!videoRef.current) return
+      videoRef.current.pause()
+      videoRef.current.currentTime = 0
+    },
+    transportSeek(time) {
+      if (!videoRef.current) return
+      videoRef.current.currentTime = time
+    },
+    transportStartRecord() { /* video tracks don't record */ },
+    transportStopRecord()  { /* video tracks don't record */ },
+    getDuration() { return videoRef.current?.duration || 0 },
+  }), [track.objectUrl])
 
   const handleFile = (file) => {
     if (!file?.type.startsWith('video/')) return
-    setPlaying(false)
     if (track.objectUrl) URL.revokeObjectURL(track.objectUrl)
     onUpdate(track.id, {
       blob: file,
@@ -17,15 +43,22 @@ export default function VideoTrack({ track, onUpdate, onRemove }) {
     })
   }
 
-  const togglePlay = () => {
-    const v = videoRef.current
-    if (!v) return
-    if (v.paused) { v.play().then(() => setPlaying(true)).catch(() => {}) }
-    else { v.pause(); v.currentTime = 0; setPlaying(false) }
+  const handleVideoLoad = useCallback(() => {
+    const dur = videoRef.current?.duration
+    if (dur && isFinite(dur)) onDurationChange(track.id, dur)
+  }, [track.id, onDurationChange])
+
+  const toggleMute = () => {
+    const next = !mutedRef.current
+    mutedRef.current = next
+    setMuted(next)
+    if (videoRef.current) videoRef.current.muted = next
   }
 
+  const duration = videoRef.current?.duration || 0
+
   return (
-    <div className={`track-lane ${dragOver ? 'track-lane--drag' : ''}`}>
+    <div className={`track-lane ${dragOver ? 'track-lane--drag' : ''} ${muted ? 'track-lane--muted' : ''}`}>
       <div className="track-lane-head">
         <div className="track-label">
           <span className="track-type-dot track-type-dot--video" />
@@ -50,9 +83,6 @@ export default function VideoTrack({ track, onUpdate, onRemove }) {
             </div>
           ) : (
             <>
-              <button className="btn btn-sm btn-ghost track-play-btn" onClick={togglePlay}>
-                {playing ? '⏸' : '▶'}
-              </button>
               <span className="track-filename">{track.name}</span>
               <div className="track-vol-row">
                 <span className="track-vol-label">VOL</span>
@@ -72,33 +102,50 @@ export default function VideoTrack({ track, onUpdate, onRemove }) {
         </div>
 
         <div className="track-end-btns">
+          <button
+            className={`btn btn-sm btn-ghost mute-btn ${muted ? 'mute-btn--on' : ''}`}
+            onClick={toggleMute}
+            title={muted ? 'Unmute' : 'Mute'}
+          >
+            {muted ? '🔇' : 'M'}
+          </button>
           {track.objectUrl && (
             <button
               className={`btn btn-sm btn-ghost ${expanded ? 'btn-ghost--active' : ''}`}
               onClick={() => setExpanded((o) => !o)}
-              title="Toggle preview"
             >
               🎞
             </button>
           )}
-          <button className="track-remove-btn" onClick={() => onRemove(track.id)} title="Remove Track">✕</button>
+          <button className="track-remove-btn" onClick={() => onRemove(track.id)}>✕</button>
         </div>
       </div>
 
-      {/* Video preview — collapsible */}
+      {/* Timeline */}
+      {track.objectUrl && (
+        <TrackTimeline
+          position={position}
+          duration={duration}
+          isRecording={false}
+          onSeek={(t) => {
+            if (videoRef.current) videoRef.current.currentTime = t
+          }}
+        />
+      )}
+
+      {/* Video preview */}
       {track.objectUrl && expanded && (
         <div className="track-video-wrap">
           <video
             ref={videoRef}
             src={track.objectUrl}
             className="track-video-preview"
-            controls
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-            onEnded={() => setPlaying(false)}
+            onLoadedMetadata={handleVideoLoad}
           />
         </div>
       )}
     </div>
   )
-}
+})
+
+export default VideoTrack
