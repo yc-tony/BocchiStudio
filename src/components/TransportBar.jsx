@@ -5,6 +5,7 @@ export default function TransportBar({
   position,    // current playhead in seconds
   duration,    // total project duration in seconds
   onPlay,
+  onPause,
   onStop,
   onRecord,
 }) {
@@ -41,9 +42,10 @@ export default function TransportBar({
           {isCountdown ? <span className="tbtn-countdown">{countdown}</span> : '⏺'}
         </button>
 
+        {/* Pause keeps current position; Stop resets to 0 */}
         <button
           className={`tbtn tbtn--play ${isPlaying ? 'tbtn--active' : ''}`}
-          onClick={isPlaying ? onStop : onPlay}
+          onClick={isPlaying ? onPause : onPlay}
           disabled={isRecording || isCountdown}
           title={isPlaying ? 'Pause' : 'Play'}
         >

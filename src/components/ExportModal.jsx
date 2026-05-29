@@ -9,11 +9,18 @@ export default function ExportModal({ tracks, onClose }) {
 
   const { merging, progress, log, error, merge, ensureLoaded, loading: ffLoading } = useFFmpegMerge()
 
-  // Find first available recording and audio blob from the track list
-  const recTrack   = tracks.find((t) => t.type === 'recording' && t.recordedBlob)
-  const audioTrack = tracks.find((t) => t.type === 'audio'     && t.blob)
+  // Locate available source blobs across all tracks
+  const cameraTrack = tracks.find((t) => t.type === 'camera'    && t.recordedBlob)
+  const recTrack    = tracks.find((t) => t.type === 'recording' && t.recordedBlob)
+  const audioTrack  = tracks.find((t) => t.type === 'audio'     && t.blob)
 
-  const canExport = !!recTrack && !!audioTrack
+  const hasCamera = !!cameraTrack
+  const hasMic    = !!recTrack
+  const hasBgm    = !!audioTrack
+
+  // Can export as long as something was recorded
+  const canExport = hasCamera || hasMic
+
   const selectedFmt = EXPORT_FORMATS.find((f) => f.id === format) ?? EXPORT_FORMATS[0]
 
   // Pre-warm FFmpeg in background
@@ -23,8 +30,9 @@ export default function ExportModal({ tracks, onClose }) {
     if (!canExport || selectedFmt.locked) return
     try {
       const blob = await merge({
-        videoBlob:    recTrack.recordedBlob,
-        audioBlob:    audioTrack.blob,
+        videoBlob:    cameraTrack?.recordedBlob ?? null,
+        micBlob:      recTrack?.recordedBlob    ?? null,
+        audioBlob:    audioTrack?.blob          ?? null,
         syncOffsetMs: offset,
         format,
       })
@@ -53,11 +61,17 @@ export default function ExportModal({ tracks, onClose }) {
         </div>
 
         <div className="modal-body">
-          {/* Source check */}
-          {!canExport && (
+          {/* Source status */}
+          {!canExport ? (
             <div className="export-warn">
-              {!recTrack   && <div>⚠ 沒有錄音軌（先在 Recording Track 錄製）</div>}
-              {!audioTrack && <div>⚠ 沒有背景音樂（先在 Audio Track 上傳音樂）</div>}
+              <div>⚠ 尚未錄製任何內容（先在 Recording Track 或 Camera Track 錄製）</div>
+            </div>
+          ) : (
+            <div className="export-warn" style={{ background: 'rgba(74,122,90,0.07)', borderColor: 'rgba(74,122,90,0.25)', color: 'var(--green)' }}>
+              {hasCamera && <div>✓ 攝影機畫面（Camera Track）</div>}
+              {hasMic    && <div>✓ 麥克風錄音（Recording Track）</div>}
+              {hasBgm    && <div>✓ 背景音樂（Audio Track）</div>}
+              {!hasBgm   && <div style={{ color: 'var(--text-label)', fontSize: '0.65rem' }}>— 未上傳背景音樂（可在 Audio Track 添加）</div>}
             </div>
           )}
 
@@ -83,12 +97,17 @@ export default function ExportModal({ tracks, onClose }) {
                 🔒 {selectedFmt.label} 需要付費訂閱才能解鎖 —— <strong>升級方案</strong>
               </div>
             )}
+            {!hasCamera && !selectedFmt.videoOnly && (
+              <div className="format-locked-msg" style={{ background: 'rgba(64,94,128,0.05)', borderColor: 'rgba(64,94,128,0.2)', color: 'var(--text-label)' }}>
+                ℹ 無攝影機畫面，{selectedFmt.label} 將輸出為純音訊。
+              </div>
+            )}
           </div>
 
-          {/* Sync offset */}
-          {!outputUrl && (
+          {/* Sync offset (only relevant when backing music is present) */}
+          {!outputUrl && hasBgm && (
             <div className="export-section">
-              <div className="export-section-label">SYNC OFFSET</div>
+              <div className="export-section-label">SYNC OFFSET（背景音樂）</div>
               <div className="sync-row">
                 <input
                   type="range" min="-3000" max="3000" step="50"

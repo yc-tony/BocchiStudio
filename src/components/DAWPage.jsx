@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import AudioTrack from './tracks/AudioTrack'
 import RecordingTrack from './tracks/RecordingTrack'
+import CameraTrack from './tracks/CameraTrack'
 import VideoTrack from './tracks/VideoTrack'
 import ExportModal from './ExportModal'
 import TransportBar from './TransportBar'
@@ -15,6 +16,7 @@ function makeTrack(type) {
   switch (type) {
     case 'audio':     return { ...base, name: `Audio ${n}`,     blob: null, objectUrl: null, volume: 0.8 }
     case 'recording': return { ...base, name: `Recording ${n}`, recordedBlob: null }
+    case 'camera':    return { ...base, name: `Camera ${n}`,    recordedBlob: null }
     case 'video':     return { ...base, name: `Video ${n}`,     blob: null, objectUrl: null, volume: 0.8 }
     default:          return base
   }
@@ -77,6 +79,13 @@ export default function DAWPage() {
     posRef.current = 0; setPosition(0); setCountdown(null); setTState('idle')
   }, [stopTicker])
 
+  // Pause keeps current position — does NOT reset to zero
+  const handlePause = useCallback(() => {
+    stopTicker()
+    Object.values(trackRefsMap.current).forEach((r) => r?.transportPause())
+    setTState('idle')
+  }, [stopTicker])
+
   const handlePlay = useCallback(() => {
     if (tState !== 'idle') return
     const pos = posRef.current
@@ -95,8 +104,8 @@ export default function DAWPage() {
     posRef.current = 0; setPosition(0)
     Object.values(trackRefsMap.current).forEach((r) => {
       const type = r?.getType()
-      if (type === 'audio' || type === 'video') r.transportPlay(0)
-      if (type === 'recording')                 r.transportStartRecord()
+      if (type === 'audio' || type === 'video')               r.transportPlay(0)
+      if (type === 'recording' || type === 'camera')          r.transportStartRecord()
     })
     startTicker()
     setTState('recording')
@@ -163,6 +172,9 @@ export default function DAWPage() {
                 <button onClick={() => addTrack('recording')}>
                   <span className="menu-icon">🎙</span> Recording Track
                 </button>
+                <button onClick={() => addTrack('camera')}>
+                  <span className="menu-icon">📷</span> Camera Track
+                </button>
                 <button onClick={() => addTrack('video')}>
                   <span className="menu-icon">▶</span> Video Track
                 </button>
@@ -195,6 +207,7 @@ export default function DAWPage() {
               {tracks.map((track) => {
                 if (track.type === 'audio')     return <AudioTrack     {...commonProps(track)} />
                 if (track.type === 'recording') return <RecordingTrack {...commonProps(track)} />
+                if (track.type === 'camera')    return <CameraTrack    {...commonProps(track)} />
                 if (track.type === 'video')     return <VideoTrack     {...commonProps(track)} />
                 return null
               })}
@@ -210,6 +223,7 @@ export default function DAWPage() {
         position={position}
         duration={projectDuration}
         onPlay={handlePlay}
+        onPause={handlePause}
         onStop={handleStop}
         onRecord={handleRecord}
       />

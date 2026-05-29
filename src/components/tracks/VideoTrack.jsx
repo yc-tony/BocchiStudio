@@ -18,6 +18,7 @@ const VideoTrack = forwardRef(function VideoTrack(
       videoRef.current.currentTime = fromTime
       videoRef.current.play().catch(() => {})
     },
+    transportPause() { videoRef.current?.pause() },
     transportStop() {
       videoRef.current?.pause()
       if (videoRef.current) videoRef.current.currentTime = 0

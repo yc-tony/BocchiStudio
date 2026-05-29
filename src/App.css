@@ -42,6 +42,9 @@
   --font-mono:  'Courier New', 'Lucida Console', monospace;
   --radius:     6px;
   --radius-lg:  10px;
+
+  /* Two-column DAW: left block width — overridden at smaller breakpoints */
+  --hd-width: 220px;
 }
 
 /* ─── Base ───────────────────────────────────────────────────── */
@@ -155,7 +158,7 @@ body {
   z-index: 20;
 }
 .daw-ruler-spacer {
-  width: 220px;
+  width: var(--hd-width);
   flex-shrink: 0;
   border-right: 2px solid var(--border-hi);
   display: flex;
@@ -223,10 +226,12 @@ body {
   min-height: 64px;
 }
 
-/* ── Left: header block (220px) ──────────────────────────────── */
+/* ── Left: header block (width = --hd-width) ─────────────────── */
 .track-hd {
-  width: 220px;
+  width: var(--hd-width);
   flex-shrink: 0;
+  overflow: hidden;
+  min-width: 0;
   border-right: 2px solid var(--border-hi);
   background: var(--bg-card);
   padding: 7px 10px;
@@ -373,7 +378,7 @@ body {
   border-top: 1px solid var(--border);
 }
 .track-addon-hd {
-  width: 220px;
+  width: var(--hd-width);
   flex-shrink: 0;
   border-right: 2px solid var(--border-hi);
   background: var(--bg-card);
@@ -461,15 +466,28 @@ body {
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 0.65rem;
-  padding: 4px 8px;
+  padding: 4px 6px;
   cursor: pointer;
-  max-width: 200px;
+  flex: 1;
+  min-width: 0;
+  max-width: none;
   outline: none;
   transition: border-color 0.12s;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .device-select:focus { border-color: var(--accent-mid); }
 .device-select:disabled { opacity: 0.5; cursor: not-allowed; }
 .device-refresh-btn { padding: 4px 9px; font-size: 0.8rem; }
+
+.cam-hint {
+  font-size: 0.54rem;
+  color: var(--text-label);
+  line-height: 1.4;
+  overflow: hidden;
+  word-break: break-word;
+  padding-top: 1px;
+}
 
 .rec-status-row {
   display: flex;
@@ -998,8 +1016,23 @@ input[type=range]::-webkit-slider-thumb {
 
 /* ─── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 700px) {
-  .track-label { width: 90px; }
-  .format-grid { grid-template-columns: repeat(3,1fr); }
-  .daw-main { padding: 12px; }
+  :root { --hd-width: 150px; }
+  .format-grid { grid-template-columns: repeat(3, 1fr); }
+  .cam-hint { display: none; }
+  .daw-header { padding: 0 14px; }
   .device-row { flex-direction: column; align-items: flex-start; }
+}
+
+@media (max-width: 480px) {
+  :root { --hd-width: 96px; }
+  .daw-header { padding: 0 10px; }
+  .logo-sub { display: none; }
+  .hd-devices { display: none; }
+  .hd-vu .vu-meter { display: none; }
+  .transport-time { min-width: 56px; font-size: 0.7rem; }
+  .transport-status { min-width: 56px; }
+  .transport-bar { padding: 0 10px; gap: 8px; }
+  .tbtn { width: 34px; height: 34px; font-size: 0.85rem; }
+  .format-grid { grid-template-columns: repeat(2, 1fr); }
+  .modal { max-width: 100%; border-radius: var(--radius); }
 }

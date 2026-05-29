@@ -1,31 +1,27 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
-import { useMicRecorder } from '../../hooks/useMicRecorder'
-import { usePluginChain } from '../../hooks/usePluginChain'
-import VUMeter from '../VUMeter'
-import FxChain from '../FxChain'
+import { useCameraRecorder } from '../../hooks/useCameraRecorder'
 import TrackTimeline from '../TrackTimeline'
 
-const RecordingTrack = forwardRef(function RecordingTrack(
+const CameraTrack = forwardRef(function CameraTrack(
   { track, onUpdate, onRemove, onDurationChange, onSeek, position, tState },
   ref,
 ) {
-  const [fxOpen, setFxOpen] = useState(false)
-  const [muted, setMuted]   = useState(false)
+  const [muted, setMuted]           = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(true)
   const mutedRef = useRef(false)
 
   const {
-    state, elapsed, formattedTime, blob, micLevel, permError,
-    audioDevices, selectedAudioId,
-    requestMic, switchAudio, refreshDevices,
+    state, elapsed, formattedTime, blob, permError,
+    videoDevices, selectedVideoId,
+    videoRef, requestCamera, switchCamera, refreshDevices,
     startImmediate, stopImmediate,
-  } = useMicRecorder()
+  } = useCameraRecorder()
 
-  const micFx = usePluginChain()
   const isRecording = state === 'recording'
   const isBusy      = isRecording || state === 'requesting'
 
   useImperativeHandle(ref, () => ({
-    getType:     () => 'recording',
+    getType:     () => 'camera',
     transportPlay()    {},
     transportPause()   {},
     transportStop()    { if (state === 'recording') stopImmediate() },
@@ -35,7 +31,7 @@ const RecordingTrack = forwardRef(function RecordingTrack(
     getDuration()      { return state === 'done' ? elapsed : 0 },
   }), [state, elapsed, startImmediate, stopImmediate])
 
-  useEffect(() => { requestMic().catch(() => {}) }, []) // eslint-disable-line
+  useEffect(() => { requestCamera().catch(() => {}) }, []) // eslint-disable-line
 
   useEffect(() => {
     if (state === 'done' && blob) onUpdate(track.id, { recordedBlob: blob })
@@ -53,52 +49,58 @@ const RecordingTrack = forwardRef(function RecordingTrack(
         {/* Left: control block */}
         <div className="track-hd">
           <div className="track-hd-top">
-            <span className="track-type-dot track-type-dot--rec" />
+            <span className="track-type-dot track-type-dot--rec" style={{ background: '#6060b0' }} />
             <span className="track-name">{track.name}</span>
             <div className="track-hd-actions">
               <button className={`hd-btn ${muted ? 'hd-btn--muted' : ''}`} onClick={toggleMute}
-                title={muted ? 'Include in recording' : 'Skip (mute)'}>M</button>
-              <button className={`hd-btn ${fxOpen ? 'hd-btn--active' : ''}`} onClick={() => setFxOpen((o) => !o)}>FX</button>
+                title={muted ? 'Include' : 'Skip (mute)'}>M</button>
+              <button className={`hd-btn ${previewOpen ? 'hd-btn--active' : ''}`}
+                onClick={() => setPreviewOpen((o) => !o)} title="Toggle preview">📷</button>
               <button className="hd-btn hd-btn--remove" onClick={() => onRemove(track.id)}>✕</button>
             </div>
           </div>
 
-          {/* VU + status */}
-          <div className="hd-vu">
-            <VUMeter level={muted ? 0 : micLevel} bars={14} />
+          {/* Status */}
+          <div className="hd-vu" style={{ paddingLeft: 2 }}>
             {state === 'idle'       && <span className="status-chip status-idle">Ready</span>}
             {state === 'requesting' && <span className="status-chip status-loading">Init…</span>}
             {isRecording            && <span className="status-chip status-rec">● {formattedTime}</span>}
             {state === 'done'       && <span className="status-chip status-done">✓</span>}
           </div>
 
-          {/* Device selector */}
+          {/* Camera device selector */}
           <div className="hd-devices">
             <div className="device-picker">
-              <span className="device-picker-label">MIC</span>
-              <select className="device-select" value={selectedAudioId}
-                onChange={(e) => switchAudio(e.target.value)} disabled={isBusy}>
+              <span className="device-picker-label">CAM</span>
+              <select className="device-select" value={selectedVideoId}
+                onChange={(e) => switchCamera(e.target.value)} disabled={isBusy}>
                 <option value="">Default</option>
-                {audioDevices.map((d) => (
+                {videoDevices.map((d) => (
                   <option key={d.deviceId} value={d.deviceId}>
-                    {d.label || `Input ${d.deviceId.slice(0, 8)}`}
+                    {d.label || `Camera ${d.deviceId.slice(0, 8)}`}
                   </option>
                 ))}
               </select>
-              <button className="hd-btn" onClick={() => { refreshDevices(); requestMic().catch(() => {}) }}
+              <button className="hd-btn" onClick={() => { refreshDevices(); requestCamera().catch(() => {}) }}
                 disabled={isBusy} title="Refresh devices">↺</button>
+            </div>
+
+            {/* Continuity Camera / cross-platform note */}
+            <div className="cam-hint">
+              macOS: iPhone 可透過 Continuity Camera 出現在清單中。
+              手機瀏覽器亦可直接使用前 / 後鏡頭。
             </div>
           </div>
 
           {permError && (
             <div className="perm-error-bar">
               <span>⚠ {permError}</span>
-              <button className="btn btn-sm btn-ghost" onClick={() => requestMic().catch(() => {})}>重新授權</button>
+              <button className="btn btn-sm btn-ghost" onClick={() => requestCamera().catch(() => {})}>重新授權</button>
             </div>
           )}
         </div>
 
-        {/* Right: recording timeline */}
+        {/* Right: camera recording timeline */}
         <TrackTimeline
           position={position}
           duration={state === 'done' ? elapsed : 0}
@@ -110,19 +112,18 @@ const RecordingTrack = forwardRef(function RecordingTrack(
         />
       </div>
 
-      {/* FX chain */}
-      {fxOpen && (
-        <div className="track-addon-row">
+      {/* Camera live preview */}
+      {previewOpen && (
+        <div className="track-addon-row track-addon-row--cam">
           <div className="track-addon-hd" />
-          <div className="track-addon-body">
-            <FxChain
-              plugins={micFx.plugins}
-              onAdd={micFx.addPlugin}
-              onRemove={micFx.removePlugin}
-              onToggle={micFx.togglePlugin}
-              onUpdateParam={micFx.updateParam}
-            />
-            <div className="mic-fx-note">FX 僅影響監聽，錄音保留原始訊號</div>
+          <div className="track-addon-body track-addon-body--cam">
+            <video ref={videoRef} className="track-camera-video" autoPlay playsInline muted />
+            {tState === 'countdown' && (
+              <div className="track-camera-overlay">
+                <div className="cam-countdown-label">Recording starts…</div>
+              </div>
+            )}
+            {isRecording && <div className="cam-rec-badge">● REC {formattedTime}</div>}
           </div>
         </div>
       )}
@@ -130,4 +131,4 @@ const RecordingTrack = forwardRef(function RecordingTrack(
   )
 })
 
-export default RecordingTrack
+export default CameraTrack

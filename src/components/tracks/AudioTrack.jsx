@@ -36,6 +36,10 @@ const AudioTrack = forwardRef(function AudioTrack(
       ctxRef.current?.resume()
       audioObjRef.current.play().catch(() => {})
     },
+    transportPause() {
+      audioObjRef.current?.pause()
+      // currentTime is preserved — resume will continue from this position
+    },
     transportStop() {
       audioObjRef.current?.pause()
       if (audioObjRef.current) audioObjRef.current.currentTime = 0
